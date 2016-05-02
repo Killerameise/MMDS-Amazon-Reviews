@@ -1,4 +1,4 @@
-package json.sample;
+package de.hpi.json.sample;
 
 /**
  * Created by jaspar.mang on 02.05.16.

@@ -1,4 +1,4 @@
-package database;
+package de.hpi.database;
 
 import com.google.gson.Gson;
 

@@ -1,8 +1,8 @@
-package json;
+package de.hpi.json;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import database.Review;
+import de.hpi.database.Review;
 
 import java.lang.reflect.Type;
 
@@ -11,11 +11,12 @@ import java.lang.reflect.Type;
  */
 public class JsonReader {
 
-    public static Review readJson(String json){
+    public static Review readJson(String json) {
         Gson gson = new Gson();
         Type type = new TypeToken<Review>() {
         }.getType();
         Review review = gson.fromJson(json, type);
         return review;
     }
+
 }
