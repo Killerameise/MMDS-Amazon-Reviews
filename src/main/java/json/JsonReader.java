@@ -1,5 +1,8 @@
+package json;
+
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import database.Review;
 
 import java.lang.reflect.Type;
 

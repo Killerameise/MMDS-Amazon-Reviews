@@ -1,4 +1,6 @@
-import Sample.SampleReview;
+import database.Review;
+import json.JsonReader;
+import json.sample.SampleReview;
 
 /**
  * Created by jaspar.mang on 02.05.16.
