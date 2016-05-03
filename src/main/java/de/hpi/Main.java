@@ -1,8 +1,10 @@
 package de.hpi;
 
-import de.hpi.database.Review;
+import de.hpi.database.MetadataRecord;
+import de.hpi.database.ReviewRecord;
 import de.hpi.fileAccess.FileReader;
 import de.hpi.json.JsonReader;
+import de.hpi.json.sample.MetadataSample;
 import de.hpi.json.sample.SampleReview;
 
 import java.util.List;
@@ -14,13 +16,17 @@ public class Main {
     final static String file = "Path/reviews_Amazon_Instant_Video_5.json";
 
     public static void main(String args[]) {
+
         final FileReader fileReader = new FileReader(file);
-        List<Review> reviewList = fileReader.readFile();
-        for (Review review : reviewList) {
-            System.out.println(review);
+        List<ReviewRecord> reviewRecordList = fileReader.readReviewsFromFile();
+        for (ReviewRecord reviewRecord : reviewRecordList) {
+            System.out.println(reviewRecord);
         }
 
-        Review review = JsonReader.readJson(SampleReview.JSON);
-        System.out.println(review);
+        MetadataRecord metadataRecord = JsonReader.readMetadataJson(MetadataSample.JSON);
+        System.out.println(metadataRecord);
+
+        ReviewRecord reviewRecord = JsonReader.readReviewJson(SampleReview.JSON);
+        System.out.println(reviewRecord);
     }
 }

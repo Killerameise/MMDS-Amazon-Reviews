@@ -2,7 +2,8 @@ package de.hpi.json;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import de.hpi.database.Review;
+import de.hpi.database.MetadataRecord;
+import de.hpi.database.ReviewRecord;
 
 import java.lang.reflect.Type;
 
@@ -11,12 +12,20 @@ import java.lang.reflect.Type;
  */
 public class JsonReader {
 
-    public static Review readJson(String json) {
+    public static ReviewRecord readReviewJson(String json) {
         Gson gson = new Gson();
-        Type type = new TypeToken<Review>() {
+        Type type = new TypeToken<ReviewRecord>() {
         }.getType();
-        Review review = gson.fromJson(json, type);
-        return review;
+        ReviewRecord reviewRecord = gson.fromJson(json, type);
+        return reviewRecord;
+    }
+
+    public static MetadataRecord readMetadataJson(String json) {
+        Gson gson = new Gson();
+        Type type = new TypeToken<MetadataRecord>() {
+        }.getType();
+        MetadataRecord metadataRecord = gson.fromJson(json, type);
+        return metadataRecord;
     }
 
 }

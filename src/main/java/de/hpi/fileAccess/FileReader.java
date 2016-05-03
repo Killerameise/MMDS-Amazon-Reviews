@@ -1,6 +1,7 @@
 package de.hpi.fileAccess;
 
-import de.hpi.database.Review;
+import de.hpi.database.MetadataRecord;
+import de.hpi.database.ReviewRecord;
 import de.hpi.json.JsonReader;
 
 import java.io.BufferedReader;
@@ -17,23 +18,36 @@ import java.util.List;
  */
 public class FileReader {
     final Path filePath;
+    final Charset charset = Charset.forName("US-ASCII");
 
     public FileReader(final String file) {
         filePath = Paths.get(file);
 
     }
 
-    public List<Review> readFile() {
-        LinkedList<Review> reviewList = new LinkedList<>();
-        Charset charset = Charset.forName("US-ASCII");
+    public List<ReviewRecord> readReviewsFromFile() {
+        LinkedList<ReviewRecord> reviewRecordList = new LinkedList<>();
         try (BufferedReader reader = Files.newBufferedReader(filePath, charset)) {
             String line = null;
             while ((line = reader.readLine()) != null) {
-                reviewList.add(JsonReader.readJson(line));
+                reviewRecordList.add(JsonReader.readReviewJson(line));
             }
         } catch (IOException x) {
             System.err.format("IOException: %s%n", x);
         }
-        return reviewList;
+        return reviewRecordList;
+    }
+
+    public List<MetadataRecord> readMetadataFromFile() {
+        LinkedList<MetadataRecord> metadataRecordList = new LinkedList<>();
+        try (BufferedReader reader = Files.newBufferedReader(filePath, charset)) {
+            String line = null;
+            while ((line = reader.readLine()) != null) {
+                metadataRecordList.add(JsonReader.readMetadataJson(line));
+            }
+        } catch (IOException x) {
+            System.err.format("IOException: %s%n", x);
+        }
+        return metadataRecordList;
     }
 }
