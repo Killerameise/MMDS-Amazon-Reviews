@@ -7,20 +7,30 @@ import de.hpi.json.JsonReader;
 import de.hpi.json.sample.MetadataSample;
 import de.hpi.json.sample.SampleReview;
 
+import java.io.File;
+import java.io.FilenameFilter;
 import java.util.List;
 
 /**
  * Created by jaspar.mang on 02.05.16.
  */
 public class Main {
-    final static String file = "Path/reviews_Amazon_Instant_Video_5.json";
+    private final static String reviewPath = "resources/reviews";
 
     public static void main(String args[]) {
 
-        final FileReader fileReader = new FileReader(file);
-        List<ReviewRecord> reviewRecordList = fileReader.readReviewsFromFile();
-        for (ReviewRecord reviewRecord : reviewRecordList) {
-            System.out.println(reviewRecord);
+        File folder = new File(reviewPath);
+        File[] reviewFiles = folder.listFiles(new FilenameFilter() {
+            @Override
+            public boolean accept(File dir, String name) {
+                return name.endsWith(".json");
+            }
+        });
+
+        for (File file : reviewFiles) {
+            final FileReader fileReader = new FileReader(file.getAbsolutePath());
+            List<ReviewRecord> reviewRecordList = fileReader.readReviewsFromFile();
+            System.out.println(reviewRecordList.size());
         }
 
         MetadataRecord metadataRecord = JsonReader.readMetadataJson(MetadataSample.JSON);
