@@ -12,20 +12,16 @@ import java.lang.reflect.Type;
  */
 public class JsonReader {
 
+    private static Gson gson = new Gson();
+
     public static ReviewRecord readReviewJson(String json) {
-        Gson gson = new Gson();
-        Type type = new TypeToken<ReviewRecord>() {
-        }.getType();
-        ReviewRecord reviewRecord = gson.fromJson(json, type);
-        return reviewRecord;
+        Type type = new TypeToken<ReviewRecord>() {}.getType();
+        return gson.fromJson(json, type);
     }
 
     public static MetadataRecord readMetadataJson(String json) {
-        Gson gson = new Gson();
-        Type type = new TypeToken<MetadataRecord>() {
-        }.getType();
-        MetadataRecord metadataRecord = gson.fromJson(json, type);
-        return metadataRecord;
+        Type type = new TypeToken<MetadataRecord>() {}.getType();
+        return gson.fromJson(json, type);
     }
 
 }

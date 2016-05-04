@@ -17,18 +17,17 @@ import java.util.List;
  * Created by jaspar.mang on 02.05.16.
  */
 public class FileReader {
-    final Path filePath;
-    final Charset charset = Charset.forName("US-ASCII");
+    private final Path filePath;
+    private final Charset charset = Charset.forName("US-ASCII");
 
     public FileReader(final String file) {
         filePath = Paths.get(file);
-
     }
 
     public List<ReviewRecord> readReviewsFromFile() {
         LinkedList<ReviewRecord> reviewRecordList = new LinkedList<>();
         try (BufferedReader reader = Files.newBufferedReader(filePath, charset)) {
-            String line = null;
+            String line;
             while ((line = reader.readLine()) != null) {
                 reviewRecordList.add(JsonReader.readReviewJson(line));
             }
@@ -41,7 +40,7 @@ public class FileReader {
     public List<MetadataRecord> readMetadataFromFile() {
         LinkedList<MetadataRecord> metadataRecordList = new LinkedList<>();
         try (BufferedReader reader = Files.newBufferedReader(filePath, charset)) {
-            String line = null;
+            String line;
             while ((line = reader.readLine()) != null) {
                 metadataRecordList.add(JsonReader.readMetadataJson(line));
             }
