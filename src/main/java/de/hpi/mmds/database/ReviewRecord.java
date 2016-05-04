@@ -1,4 +1,4 @@
-package de.hpi.database;
+package de.hpi.mmds.database;
 
 import com.google.gson.Gson;
 

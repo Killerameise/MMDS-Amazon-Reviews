@@ -1,11 +1,11 @@
-package de.hpi;
+package de.hpi.mmds;
 
-import de.hpi.database.MetadataRecord;
-import de.hpi.database.ReviewRecord;
-import de.hpi.fileAccess.FileReader;
-import de.hpi.json.JsonReader;
-import de.hpi.json.sample.MetadataSample;
-import de.hpi.json.sample.SampleReview;
+import de.hpi.mmds.database.MetadataRecord;
+import de.hpi.mmds.database.ReviewRecord;
+import de.hpi.mmds.fileAccess.FileReader;
+import de.hpi.mmds.json.JsonReader;
+import de.hpi.mmds.json.sample.MetadataSample;
+import de.hpi.mmds.json.sample.SampleReview;
 
 import java.io.File;
 import java.io.FilenameFilter;

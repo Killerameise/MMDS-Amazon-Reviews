@@ -1,9 +1,9 @@
-package de.hpi.json;
+package de.hpi.mmds.json;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import de.hpi.database.MetadataRecord;
-import de.hpi.database.ReviewRecord;
+import de.hpi.mmds.database.MetadataRecord;
+import de.hpi.mmds.database.ReviewRecord;
 
 import java.lang.reflect.Type;
 

@@ -1,4 +1,4 @@
-package de.hpi.json.sample;
+package de.hpi.mmds.json.sample;
 
 /**
  * Created by jaspar.mang on 02.05.16.

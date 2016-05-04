@@ -1,8 +1,8 @@
-package de.hpi.fileAccess;
+package de.hpi.mmds.fileAccess;
 
-import de.hpi.database.MetadataRecord;
-import de.hpi.database.ReviewRecord;
-import de.hpi.json.JsonReader;
+import de.hpi.mmds.database.MetadataRecord;
+import de.hpi.mmds.database.ReviewRecord;
+import de.hpi.mmds.json.JsonReader;
 
 import java.io.BufferedReader;
 import java.io.IOException;
