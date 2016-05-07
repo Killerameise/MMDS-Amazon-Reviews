@@ -2,7 +2,6 @@ package de.hpi.mmds.nlp;
 
 import de.hpi.mmds.nlp.Utility;
 
-import edu.stanford.nlp.ling.Word;
 import edu.stanford.nlp.process.PTBTokenizer;
 import edu.stanford.nlp.process.WordTokenFactory;
 import edu.stanford.nlp.stats.ClassicCounter;
@@ -19,26 +18,10 @@ import java.util.List;
 public class TfIdf {
     private ClassicCounter<String> dfCounter;
     private int docCounter;
-    private List<Word> stopwords;
-    private final static String stopwordPath = "resources/stopwords.txt";
 
     public TfIdf() {
         dfCounter = new ClassicCounter<String>();
         docCounter = 0;
-        try {
-            PTBTokenizer tokenizer = new PTBTokenizer<>(new FileReader(stopwordPath), new WordTokenFactory(), "");
-            stopwords = new ArrayList<Word>(new HashSet<Word>(tokenizer.tokenize()));
-        }
-        catch (FileNotFoundException i){
-            System.out.println("Did not find stopword list");
-            stopwords = new ArrayList<Word>();
-        }
-
-    }
-
-    public List<Word> removeStopwords(List<Word> input){
-        input.removeAll(stopwords);
-        return input;
     }
 
     /**
