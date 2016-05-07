@@ -10,7 +10,7 @@ public class ReviewRecord {
     public String asin;
     public String reviewerName;
     public int[] helpful;
-    public String reviewerText;
+    public String reviewText;
     public float overall;
     public String summary;
     public int unixReviewTime;
@@ -20,12 +20,12 @@ public class ReviewRecord {
 
     }
 
-    public ReviewRecord(String reviewerID, String asin, String reviewerName, int[] helpful, String reviewerText, float overall, String summary, int unixReviewTime, String reviewTime) {
+    public ReviewRecord(String reviewerID, String asin, String reviewerName, int[] helpful, String reviewText, float overall, String summary, int unixReviewTime, String reviewTime) {
         this.reviewerID = reviewerID;
         this.asin = asin;
         this.reviewerName = reviewerName;
         this.helpful = helpful;
-        this.reviewerText = reviewerText;
+        this.reviewText = reviewText;
         this.overall = overall;
         this.summary = summary;
         this.unixReviewTime = unixReviewTime;
@@ -64,12 +64,12 @@ public class ReviewRecord {
         this.helpful = helpful;
     }
 
-    public String getReviewerText() {
-        return reviewerText;
+    public String getReviewText() {
+        return reviewText;
     }
 
-    public void setReviewerText(String reviewerText) {
-        this.reviewerText = reviewerText;
+    public void setReviewerText(String reviewText) {
+        this.reviewText = reviewText;
     }
 
     public float getOverall() {
