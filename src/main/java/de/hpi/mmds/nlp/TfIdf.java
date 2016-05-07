@@ -1,5 +1,7 @@
 package de.hpi.mmds.nlp;
 
+import de.hpi.mmds.nlp.Utility;
+
 import edu.stanford.nlp.ling.Word;
 import edu.stanford.nlp.process.PTBTokenizer;
 import edu.stanford.nlp.process.WordTokenFactory;
@@ -44,12 +46,12 @@ public class TfIdf {
      **/
     public void addReviewText(String reviewText) {
         //TODO: lowercase everything
+        List<String> wordlist = Utility.tokenize(reviewText, true);
         PTBTokenizer tokenizer = new PTBTokenizer<>(new StringReader(reviewText),
                 new WordTokenFactory(), "");
-        List<Word> uniqueWordList = new ArrayList<Word>(new HashSet<Word>(tokenizer.tokenize()));
-        uniqueWordList = removeStopwords(uniqueWordList);
-        for (Word word : uniqueWordList) {
-            dfCounter.incrementCount(word.toString());
+        List<String> uniqueWordList = new ArrayList<String>(new HashSet<String>(wordlist));
+        for (String word : uniqueWordList) {
+            dfCounter.incrementCount(word);
         }
         docCounter += 1;
     }
@@ -62,19 +64,16 @@ public class TfIdf {
     public HashMap<String, Double> getTfIdf(String reviewText) {
         //TODO: lowercase everything
         HashMap<String, Double> tfidfMap = new HashMap<>();
-        PTBTokenizer tokenizer = new PTBTokenizer<>(new StringReader(reviewText),
-                new WordTokenFactory(), "");
-        List<Word> wordList = tokenizer.tokenize();
-        wordList = removeStopwords(wordList);
+        List<String> wordList = Utility.tokenize(reviewText, true);
         ClassicCounter<String> wordCounter = new ClassicCounter<String>();
-        for (Word word : wordList) {
-            wordCounter.incrementCount(word.toString());
+        for (String word : wordList) {
+            wordCounter.incrementCount(word);
         }
-        for (Word word : wordList) {
-            double tf = wordCounter.getCount(word.toString());
-            double df = dfCounter.getCount(word.toString()) / Math.max(docCounter, 1);
+        for (String word : wordList) {
+            double tf = wordCounter.getCount(word);
+            double df = dfCounter.getCount(word) / Math.max(docCounter, 1);
             double tfidf = tf / Math.max(df, 1.0 / Math.max(docCounter, 1)); // add Laplace Smoothing for unseen words
-            tfidfMap.put(word.toString(), tfidf);
+            tfidfMap.put(word, tfidf);
         }
         return tfidfMap;
 
