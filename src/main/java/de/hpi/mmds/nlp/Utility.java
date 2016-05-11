@@ -47,4 +47,6 @@ public class Utility {
         PTBTokenizer tokenizer = new PTBTokenizer<>(new StringReader(text), new WordTokenFactory(), "");
         return tagger.tagSentence(tokenizer.tokenize());
     }
+
+    public static void classifyReview(){}
 }

@@ -2,7 +2,9 @@ package de.hpi.mmds;
 
 import de.hpi.mmds.database.ReviewRecord;
 import de.hpi.mmds.fileAccess.FileReader;
+import de.hpi.mmds.nlp.BigramThesis;
 import de.hpi.mmds.nlp.TfIdf;
+import de.hpi.mmds.nlp.Utility;
 
 import java.io.File;
 import java.io.FilenameFilter;
@@ -24,11 +26,21 @@ public class Main {
             }
         });
 
+
+
         for (File file : reviewFiles) {
+            BigramThesis bt = new BigramThesis();
             final FileReader fileReader = new FileReader(file.getAbsolutePath());
             List<ReviewRecord> reviewRecordList = fileReader.readReviewsFromFile();
             System.out.println(reviewRecordList.size());
+            /*
+            for (ReviewRecord r : reviewRecordList) {
 
+                bt.findBigrams(Utility.posTag(r.getReviewText()));
+            }
+            System.out.println(file.toString());
+            System.out.println(bt.getKCommonBigrams(25));
+            */
             /** Add the following lines to get a TFIDF measure **/
             /*
             TfIdf x = new TfIdf();
@@ -42,7 +54,10 @@ public class Main {
                     "it after recording. :DIf you needed a pop filter, this will work just as well as the expensive " +
                     "ones, and it may even come with a pleasing aroma like mine did!Buy this"));
             */
+
         }
+        //System.out.println(bt.bigramCounter);
+
 
         /*MetadataRecord metadataRecord = JsonReader.readMetadataJson(MetadataSample.JSON);
         //System.out.println(metadataRecord);
