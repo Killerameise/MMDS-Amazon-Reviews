@@ -1,5 +1,6 @@
 package de.hpi.mmds.nlp;
 
+import edu.stanford.nlp.ling.Tag;
 import edu.stanford.nlp.ling.TaggedWord;
 import edu.stanford.nlp.ling.Word;
 import edu.stanford.nlp.process.PTBTokenizer;
@@ -43,10 +44,35 @@ public class Utility {
         for(Word w : wordList) result.add(w.toString().toLowerCase());
         return result;
     }
-    public static List<TaggedWord> posTag(String text){
+
+    public static List<Word> tokenizeW(String text, Boolean useStopwords){
         PTBTokenizer tokenizer = new PTBTokenizer<>(new StringReader(text), new WordTokenFactory(), "");
-        return tagger.tagSentence(tokenizer.tokenize());
+        List<Word> wordList = tokenizer.tokenize();
+        if (useStopwords){
+            wordList.removeAll(stopwords);
+        }
+        //List<String> result = new ArrayList<>();
+        return wordList;
     }
+
+    public static List<TaggedWord> posTag(String text){
+        //PTBTokenizer tokenizer = new PTBTokenizer<>(new StringReader(text), new WordTokenFactory(), "");
+        return tagger.tagSentence(tokenizeW(text, true));
+    }
+
+    /*
+    public static List<Word> getNeighbourWords(String text, List<Tag> posTagsToFind, ArrayList<Word> seedWords, int neighbourhoodToScan){
+        List<TaggedWord> taggedText = posTag(text);
+        for (int i =0; i<taggedText.size(); i++){
+            TaggedWord tword = taggedText.get(i);
+                if (seedWords.contains(tword.word())){
+                    List<TaggedWord>
+                }
+                if (posTagsToFind.contains(tword.tag())){
+
+                }
+        }
+    }*/
 
     public static void classifyReview(){}
 }

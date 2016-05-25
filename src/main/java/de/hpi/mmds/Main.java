@@ -7,6 +7,7 @@ import de.hpi.mmds.nlp.TfIdf;
 import de.hpi.mmds.nlp.Utility;
 
 import java.io.File;
+import java.io.FileWriter;
 import java.io.FilenameFilter;
 import java.util.List;
 
@@ -29,18 +30,21 @@ public class Main {
 
 
         for (File file : reviewFiles) {
+
             BigramThesis bt = new BigramThesis();
             final FileReader fileReader = new FileReader(file.getAbsolutePath());
             List<ReviewRecord> reviewRecordList = fileReader.readReviewsFromFile();
-            System.out.println(reviewRecordList.size());
-            /*
+            //System.out.println(reviewRecordList.size());
+
             for (ReviewRecord r : reviewRecordList) {
 
-                bt.findBigrams(Utility.posTag(r.getReviewText()));
+                bt.findXGrams(4, Utility.posTag(r.getReviewText()));
             }
-            System.out.println(file.toString());
-            System.out.println(bt.getKCommonBigrams(25));
-            */
+            //System.out.println(file.toString());
+            System.out.println(bt.getKCommonXGrams(25, 3));
+            System.out.println(bt.getKCommonXGrams(25, 4));
+
+
             /** Add the following lines to get a TFIDF measure **/
             /*
             TfIdf x = new TfIdf();
