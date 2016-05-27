@@ -7,7 +7,27 @@
     <groupId>de.hpi.mmds</groupId>
     <artifactId>mmds</artifactId>
     <version>1.0-SNAPSHOT</version>
+    <properties>
+        <nd4j.version>0.4-rc3.9</nd4j.version>
+        <dl4j.version>0.4-rc3.9</dl4j.version>
+    </properties>
+
     <dependencies>
+        <dependency>
+            <groupId>org.deeplearning4j</groupId>
+            <artifactId>deeplearning4j-ui</artifactId>
+            <version>${dl4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.deeplearning4j</groupId>
+            <artifactId>deeplearning4j-nlp</artifactId>
+            <version>${dl4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.nd4j</groupId>
+            <artifactId>nd4j-native</artifactId>
+            <version>${nd4j.version}</version>
+        </dependency>
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
