@@ -3,8 +3,11 @@ package de.hpi.mmds.nlp;
 import java.util.*;
 import java.util.stream.Stream;
 
+import edu.stanford.nlp.ling.Tag;
 import edu.stanford.nlp.ling.TaggedWord;
 import edu.stanford.nlp.stats.ClassicCounter;
+
+import org.apache.commons.collections4.queue.CircularFifoQueue;
 
 import javax.swing.text.html.HTML;
 
@@ -15,15 +18,17 @@ import javax.swing.text.html.HTML;
  */
 public class BigramThesis {
 
-    public static List<String> adjectiveTags = Arrays.asList("JJR");//("J", "JJR", "JJS");
+    public static List<String> adjectiveTags = Arrays.asList("J", "JJR", "JJS");
     public static List<String> nounTags = Arrays.asList("NN", "NNS", "NNP", "NNPS");
-    public static List<String> adverbTags = Arrays.asList("RBR");//"RB", "RBR", "RBS");
+    public static List<String> adverbTags = Arrays.asList("RB", "RBR", "RBS");
     public ClassicCounter<List<TaggedWord>> bigramCounter;
+    public Map<Integer, ClassicCounter<List<TaggedWord>>> xGramCounter;
 
 
 
     public BigramThesis(){
         bigramCounter = new ClassicCounter<>();
+        xGramCounter = new HashMap<>();
     }
 
     public void findBigrams(List<TaggedWord> posList){
@@ -41,6 +46,62 @@ public class BigramThesis {
             lastToken = currentToken;
         }
     }
+
+    public void findXGrams(int x, List<TaggedWord> text){
+        for (int i=2; i<=x; i++){
+            if (xGramCounter.containsKey(i)){
+                xGramCounter.get(i).addAll(findKGrams(i, text));
+            }
+            else {
+                xGramCounter.put(i, findKGrams(i, text));
+            }
+        }
+    }
+
+    public ClassicCounter<List<TaggedWord>> findKGrams(int k, List<TaggedWord> text){
+        CircularFifoQueue<TaggedWord> queue = new CircularFifoQueue<>(k);
+        ClassicCounter<List<TaggedWord>> counter = new ClassicCounter<>();
+        for (int i=0; i<text.size(); i++){
+            TaggedWord current_word= text.get(i);
+            queue.add(current_word);
+            if (queue.isAtFullCapacity()){
+                Boolean containsAdj = false;
+                Boolean containsNoun = false;
+                Iterator<TaggedWord> it = queue.iterator();
+                while (it.hasNext()){
+                    TaggedWord token = it.next();
+                    if (adjectiveTags.contains(token.tag())||adverbTags.contains(token.tag())){
+                        containsAdj = true;
+                    }
+                    else if (nounTags.contains(token.tag())){
+                        containsNoun = true;
+                    }
+                }
+                if (containsAdj && containsNoun){
+                    counter.incrementCount(Arrays.asList(queue.toArray(new TaggedWord[k])));
+                }
+            }
+        }
+        return counter;
+    }
+
+    public Map<List<TaggedWord>, Double> getKCommonXGrams(int k, int x){
+        Map<List<TaggedWord>, Double> unsortedMap = new HashMap<>();
+        for (List<TaggedWord> l: xGramCounter.get(x)){
+            unsortedMap.put(l, xGramCounter.get(x).getCount(l));
+        }
+        Map<List<TaggedWord>, Double> sortedMap = sortByValue(unsortedMap);
+        Iterator<Map.Entry<List<TaggedWord>, Double>> iterator = sortedMap.entrySet().iterator();
+        Integer i = k;
+        LinkedHashMap<List<TaggedWord>, Double> result = new LinkedHashMap();
+        while (iterator.hasNext() && i>0) {
+            Map.Entry<List<TaggedWord>, Double> item = iterator.next();
+            result.put(item.getKey(), item.getValue());
+            i -= 1;
+        }
+        return result;
+    }
+
 
     public Map<List<TaggedWord>, Double> getKCommonBigrams(int k){
         Map<List<TaggedWord>, Double> unsortedMap = new HashMap<>();
