@@ -62,14 +62,14 @@ public class Word2VecTest {
         vec.fit();
 
         //Evaluate
-        double sim = vec.similarity("box", "baby");
+        double sim = vec.similarity("child", "baby");
         System.out.println("Similarity between child and baby: " + sim);
         Collection<String> similar = vec.wordsNearest("day", 10);
         System.out.println("Similar words to 'baby' : " + similar);
         try(BufferedReader br = new BufferedReader(new InputStreamReader(System.in))){
             while(true){
 
-                System.out.print("\n1 = Compare 2 word, 2 = Get similar words, 3 = exit.\n");
+                System.out.print("\n1 = Compare two words, 2 = Get similar words, 3 = exit.\n");
                 int method = Integer.parseInt(br.readLine());
                 if(method == 1){
                     System.out.print("\nFirst Word\n");
