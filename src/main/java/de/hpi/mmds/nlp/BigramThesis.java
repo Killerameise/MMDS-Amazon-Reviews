@@ -1,5 +1,6 @@
 package de.hpi.mmds.nlp;
 
+import java.io.Serializable;
 import java.util.*;
 import java.util.stream.Stream;
 
@@ -7,7 +8,9 @@ import edu.stanford.nlp.ling.Tag;
 import edu.stanford.nlp.ling.TaggedWord;
 import edu.stanford.nlp.stats.ClassicCounter;
 
+import org.apache.commons.collections.map.HashedMap;
 import org.apache.commons.collections4.queue.CircularFifoQueue;
+import scala.Tuple2;
 
 import javax.swing.text.html.HTML;
 
@@ -16,7 +19,7 @@ import javax.swing.text.html.HTML;
  * We look for adjectives/ adverbs (POS-tag JJ, JJR, JJS, RB, RBR, RBS) followed by a substantive (NN, NNS, NNP, NNPS)
  *
  */
-public class BigramThesis {
+public class BigramThesis implements Serializable {
 
     public static List<String> adjectiveTags = Arrays.asList("J", "JJR", "JJS");
     public static List<String> nounTags = Arrays.asList("NN", "NNS", "NNP", "NNPS");
@@ -56,6 +59,45 @@ public class BigramThesis {
                 xGramCounter.put(i, findKGrams(i, text));
             }
         }
+    }
+
+    public static List<Tuple2<List<TaggedWord>, Double>> convertCounter(ClassicCounter<List<TaggedWord>> counter) {
+        List<Tuple2<List<TaggedWord>, Double>> result = new LinkedList<>();
+        for (List<TaggedWord> l: counter){
+            result.add(new Tuple2<>(l, counter.getCount(l)));
+        }
+        return result;
+    }
+
+    public static ClassicCounter<List<TaggedWord>> combineCounters(ClassicCounter<List<TaggedWord>> a, ClassicCounter<List<TaggedWord>> b) {
+        ClassicCounter<List<TaggedWord>> result = new ClassicCounter<>();
+        result.addAll(a);
+        result.addAll(b);
+        return result;
+    }
+
+    public static List<Tuple2<List<TaggedWord>, Integer>> findKGramsEx(int k, List<TaggedWord> text){
+        CircularFifoQueue<TaggedWord> queue = new CircularFifoQueue<>(k);
+        List<Tuple2<List<TaggedWord>, Integer>> result = new LinkedList<>();
+        for (TaggedWord current_word : text) {
+            queue.add(current_word);
+            if (queue.isAtFullCapacity()) {
+                Boolean containsAdj = false;
+                Boolean containsNoun = false;
+                for (TaggedWord token : queue) {
+                    if (adjectiveTags.contains(token.tag()) || adverbTags.contains(token.tag())) {
+                        containsAdj = true;
+                    } else if (nounTags.contains(token.tag())) {
+                        containsNoun = true;
+                    }
+                    if (containsAdj && containsNoun) {
+                        result.add(new Tuple2<>(Arrays.asList(queue.toArray(new TaggedWord[k])), 1));
+                        break;
+                    }
+                }
+            }
+        }
+        return result;
     }
 
     public ClassicCounter<List<TaggedWord>> findKGrams(int k, List<TaggedWord> text){

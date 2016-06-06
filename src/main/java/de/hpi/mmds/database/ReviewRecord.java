@@ -2,10 +2,12 @@ package de.hpi.mmds.database;
 
 import com.google.gson.Gson;
 
+import java.io.Serializable;
+
 /**
  * Created by jaspar.mang on 02.05.16.
  */
-public class ReviewRecord {
+public class ReviewRecord implements Serializable {
     public String reviewerID;
     public String asin;
     public String reviewerName;

@@ -3,13 +3,25 @@ package de.hpi.mmds;
 import de.hpi.mmds.database.ReviewRecord;
 import de.hpi.mmds.fileAccess.FileReader;
 import de.hpi.mmds.nlp.BigramThesis;
-import de.hpi.mmds.nlp.TfIdf;
 import de.hpi.mmds.nlp.Utility;
 
 import java.io.File;
-import java.io.FileWriter;
 import java.io.FilenameFilter;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+
+import edu.stanford.nlp.ling.TaggedWord;
+import edu.stanford.nlp.stats.ClassicCounter;
+import org.apache.spark.SparkConf;
+import org.apache.spark.SparkContext;
+import org.apache.spark.api.java.JavaPairRDD;
+import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.Function;
+import org.apache.spark.api.java.function.Function2;
+import scala.Tuple2;
 
 /**
  * Created by jaspar.mang on 02.05.16.
@@ -19,6 +31,11 @@ public class Main {
 
     public static void main(String args[]) {
 
+        SparkConf conf = new SparkConf();
+        conf.setIfMissing("spark.master", "local[2]");
+        conf.setAppName("mmds-amazon");
+        JavaSparkContext context = new JavaSparkContext(conf);
+
         File folder = new File(reviewPath);
         File[] reviewFiles = folder.listFiles(new FilenameFilter() {
             @Override
@@ -27,8 +44,6 @@ public class Main {
             }
         });
 
-
-
         for (File file : reviewFiles) {
 
             BigramThesis bt = new BigramThesis();
@@ -36,13 +51,26 @@ public class Main {
             List<ReviewRecord> reviewRecordList = fileReader.readReviewsFromFile();
             //System.out.println(reviewRecordList.size());
 
-            for (ReviewRecord r : reviewRecordList) {
+            JavaRDD<ReviewRecord> recordsRDD = context.parallelize(reviewRecordList);
+            JavaRDD<List<TaggedWord>> textRDD = recordsRDD.map(
+                    (r) -> Utility.posTag(r.getReviewText())
+            );
 
-                bt.findXGrams(4, Utility.posTag(r.getReviewText()));
-            }
-            //System.out.println(file.toString());
-            System.out.println(bt.getKCommonXGrams(25, 3));
-            System.out.println(bt.getKCommonXGrams(25, 4));
+            JavaRDD<List<Tuple2<List<TaggedWord>, Integer>>> rddValuesRDD = textRDD.map(
+                    taggedWords -> BigramThesis.findKGramsEx(3, taggedWords)
+            );
+
+            List<Tuple2<List<TaggedWord>, Integer>> rddValues = rddValuesRDD.reduce(
+                    (a, b) -> {a.addAll(b); return a;}
+            );
+
+            JavaPairRDD<List<TaggedWord>, Integer> semiFinalRDD = context.parallelizePairs(rddValues).reduceByKey((a, b) -> a + b);
+
+            JavaPairRDD<Integer, List<TaggedWord>> swappedFinalRDD = semiFinalRDD.mapToPair(Tuple2::swap).sortByKey(false);
+
+            JavaPairRDD<List<TaggedWord>, Integer> finalRDD = swappedFinalRDD.mapToPair(Tuple2::swap);
+
+            System.out.println(finalRDD.take(10));
 
 
             /** Add the following lines to get a TFIDF measure **/
