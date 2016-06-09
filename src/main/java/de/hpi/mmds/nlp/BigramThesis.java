@@ -61,21 +61,6 @@ public class BigramThesis implements Serializable {
         }
     }
 
-    public static List<Tuple2<List<TaggedWord>, Double>> convertCounter(ClassicCounter<List<TaggedWord>> counter) {
-        List<Tuple2<List<TaggedWord>, Double>> result = new LinkedList<>();
-        for (List<TaggedWord> l: counter){
-            result.add(new Tuple2<>(l, counter.getCount(l)));
-        }
-        return result;
-    }
-
-    public static ClassicCounter<List<TaggedWord>> combineCounters(ClassicCounter<List<TaggedWord>> a, ClassicCounter<List<TaggedWord>> b) {
-        ClassicCounter<List<TaggedWord>> result = new ClassicCounter<>();
-        result.addAll(a);
-        result.addAll(b);
-        return result;
-    }
-
     public static List<Tuple2<List<TaggedWord>, Integer>> findKGramsEx(int k, List<TaggedWord> text){
         CircularFifoQueue<TaggedWord> queue = new CircularFifoQueue<>(k);
         List<Tuple2<List<TaggedWord>, Integer>> result = new LinkedList<>();
