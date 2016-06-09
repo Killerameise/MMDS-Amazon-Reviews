@@ -1,7 +1,7 @@
 package de.hpi.mmds;
 
 import de.hpi.mmds.database.ReviewRecord;
-import de.hpi.mmds.fileAccess.FileReader;
+import de.hpi.mmds.json.JsonReader;
 import de.hpi.mmds.nlp.BigramThesis;
 import de.hpi.mmds.nlp.Utility;
 import edu.stanford.nlp.ling.TaggedWord;
@@ -12,7 +12,6 @@ import org.apache.spark.api.java.JavaSparkContext;
 import scala.Tuple2;
 
 import java.io.File;
-import java.io.FilenameFilter;
 import java.util.List;
 
 
@@ -31,11 +30,10 @@ public class Main {
 
         for (File file : reviewFiles) {
 
-            BigramThesis bt = new BigramThesis();
-            final FileReader fileReader = new FileReader(file.getAbsolutePath());
-            List<ReviewRecord> reviewRecordList = fileReader.readReviewsFromFile();
+            JavaRDD<String> fileRDD = context.textFile(file.getAbsolutePath());
 
-            JavaRDD<ReviewRecord> recordsRDD = context.parallelize(reviewRecordList);
+            JavaRDD<ReviewRecord> recordsRDD = fileRDD.map(JsonReader::readReviewJson);
+
             JavaRDD<List<TaggedWord>> textRDD = recordsRDD.map(
                     (r) -> Utility.posTag(r.getReviewText())
             );
