@@ -4,28 +4,18 @@ import de.hpi.mmds.database.ReviewRecord;
 import de.hpi.mmds.fileAccess.FileReader;
 import de.hpi.mmds.nlp.BigramThesis;
 import de.hpi.mmds.nlp.Utility;
-
-import java.io.File;
-import java.io.FilenameFilter;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
-
 import edu.stanford.nlp.ling.TaggedWord;
-import edu.stanford.nlp.stats.ClassicCounter;
 import org.apache.spark.SparkConf;
-import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.Function;
-import org.apache.spark.api.java.function.Function2;
 import scala.Tuple2;
 
-/**
- * Created by jaspar.mang on 02.05.16.
- */
+import java.io.File;
+import java.io.FilenameFilter;
+import java.util.List;
+
+
 public class Main {
     private final static String reviewPath = "resources/reviews";
 
@@ -37,19 +27,13 @@ public class Main {
         JavaSparkContext context = new JavaSparkContext(conf);
 
         File folder = new File(reviewPath);
-        File[] reviewFiles = folder.listFiles(new FilenameFilter() {
-            @Override
-            public boolean accept(File dir, String name) {
-                return name.endsWith(".json");
-            }
-        });
+        File[] reviewFiles = folder.listFiles((dir, name) -> name.endsWith(".json"));
 
         for (File file : reviewFiles) {
 
             BigramThesis bt = new BigramThesis();
             final FileReader fileReader = new FileReader(file.getAbsolutePath());
             List<ReviewRecord> reviewRecordList = fileReader.readReviewsFromFile();
-            //System.out.println(reviewRecordList.size());
 
             JavaRDD<ReviewRecord> recordsRDD = context.parallelize(reviewRecordList);
             JavaRDD<List<TaggedWord>> textRDD = recordsRDD.map(
