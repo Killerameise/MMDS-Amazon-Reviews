@@ -54,8 +54,9 @@ public class Word2VecTest {
                     .setVectorSize(3)
                     .setMinCount(0);
             Word2VecModel model = word2Vec.fit(documentDF);
+            System.out.println(model.getVectors().take(1));
             List<Row> synonyms = model.findSynonyms("she", 10).collectAsList();
-            System.out.println(synonyms);
+            //System.out.println(synonyms);
 
         }
     }

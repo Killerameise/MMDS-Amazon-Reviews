@@ -29,7 +29,7 @@ public class LinearRegression {
     public static void main(String args[]) {
 
         SparkConf conf = new SparkConf();
-        conf.set("spark.master", "local[2]");
+        conf.set("spark.master", "local[8]");
         conf.setAppName("mmds-amazon");
         JavaSparkContext context = new JavaSparkContext(conf);
         SQLContext sqlContext = new SQLContext(context);

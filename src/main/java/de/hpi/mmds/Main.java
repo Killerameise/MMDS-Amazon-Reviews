@@ -5,14 +5,20 @@ import de.hpi.mmds.json.JsonReader;
 import de.hpi.mmds.nlp.BigramThesis;
 import de.hpi.mmds.nlp.Utility;
 import edu.stanford.nlp.ling.TaggedWord;
+import edu.stanford.nlp.ling.Word;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.mllib.feature.Word2Vec;
+import org.apache.spark.mllib.feature.Word2VecModel;
+import org.apache.spark.mllib.linalg.Vector;
+import org.apache.spark.sql.SQLContext;
 import scala.Tuple2;
 
 import java.io.File;
 import java.util.List;
+import java.util.stream.Collectors;
 
 
 public class Main {
@@ -20,10 +26,12 @@ public class Main {
 
     public static void main(String args[]) {
 
+
         SparkConf conf = new SparkConf();
-        conf.setIfMissing("spark.master", "local[2]");
+        conf.setIfMissing("spark.master", "local[8]");
         conf.setAppName("mmds-amazon");
         JavaSparkContext context = new JavaSparkContext(conf);
+        SQLContext sqlContext = new org.apache.spark.sql.SQLContext(context);
 
         File folder = new File(reviewPath);
         File[] reviewFiles = folder.listFiles((dir, name) -> name.endsWith(".json"));
@@ -34,50 +42,48 @@ public class Main {
 
             JavaRDD<ReviewRecord> recordsRDD = fileRDD.map(JsonReader::readReviewJson);
 
-            JavaRDD<List<TaggedWord>> textRDD = recordsRDD.map(
+            JavaRDD<List<TaggedWord>> tagRDD = recordsRDD.map(
                     (r) -> Utility.posTag(r.getReviewText())
             );
 
-            JavaRDD<List<Tuple2<List<TaggedWord>, Integer>>> rddValuesRDD = textRDD.map(
+            tagRDD.cache();
+
+            JavaRDD<List<String>> textRdd = tagRDD.map(
+                    a -> a.stream().map(Word::word).collect(Collectors.toList())
+            );
+
+            // Learn a mapping from words to Vectors.
+            Word2Vec word2Vec = new Word2Vec()
+                    .setVectorSize(150)
+                    .setMinCount(5);
+            Word2VecModel model = word2Vec.fit(textRdd);
+
+            Tuple2<String, Object>[] synonyms = model.findSynonyms("cable", 10);
+            System.out.println(synonyms);
+
+            JavaRDD<List<Tuple2<List<TaggedWord>, Integer>>> rddValuesRDD = tagRDD.map(
                     taggedWords -> BigramThesis.findKGramsEx(3, taggedWords)
             );
 
-            List<Tuple2<List<TaggedWord>, Integer>> rddValues = rddValuesRDD.reduce(
-                    (a, b) -> {a.addAll(b); return a;}
-            );
+            JavaPairRDD<List<TaggedWord>, Integer> semiFinalRDD = rddValuesRDD.flatMapToPair(a -> a).reduceByKey(
+                    (a, b) -> a + b);
 
-            JavaPairRDD<List<TaggedWord>, Integer> semiFinalRDD = context.parallelizePairs(rddValues).reduceByKey((a, b) -> a + b);
-
-            JavaPairRDD<Integer, List<TaggedWord>> swappedFinalRDD = semiFinalRDD.mapToPair(Tuple2::swap).sortByKey(false);
+            JavaPairRDD<Integer, List<TaggedWord>> swappedFinalRDD = semiFinalRDD.mapToPair(Tuple2::swap).sortByKey(
+                    false);
 
             JavaPairRDD<List<TaggedWord>, Integer> finalRDD = swappedFinalRDD.mapToPair(Tuple2::swap);
 
+            JavaPairRDD<List<Vector>, Integer> vectorRDD = finalRDD.mapToPair(a -> {
+                List<Vector> vectors = a._1.stream().map(taggedWord -> model.transform(taggedWord.word())).collect(
+                        Collectors.toList());
+                return new Tuple2<>(vectors, a._2);
+            });
+
+            /*vectorRDD.reduce(a -> {
+                return a;
+            });*/
+
             System.out.println(finalRDD.take(10));
-
-
-            /** Add the following lines to get a TFIDF measure **/
-            /*
-            TfIdf x = new TfIdf();
-            for (ReviewRecord r : reviewRecordList) {
-                x.addReviewText(r.getReviewText());
-            }
-            System.out.println(x.getTfIdf("The product does exactly as it should and is quite affordable.I did not " +
-                    "realized it was double screened until it arrived, so it was even better than I had expected.As an " +
-                    "added bonus, one of the screens carries a small hint of the smell of an old grape candy I used to " +
-                    "buy, so for reminiscent's sake, I cannot stop putting the pop filter next to my nose and smelling " +
-                    "it after recording. :DIf you needed a pop filter, this will work just as well as the expensive " +
-                    "ones, and it may even come with a pleasing aroma like mine did!Buy this"));
-            */
-
         }
-        //System.out.println(bt.bigramCounter);
-
-
-        /*MetadataRecord metadataRecord = JsonReader.readMetadataJson(MetadataSample.JSON);
-        //System.out.println(metadataRecord);
-
-        ReviewRecord reviewRecord = JsonReader.readReviewJson(SampleReview.JSON);
-        //System.out.println(reviewRecord);
-        */
     }
 }
