@@ -4,6 +4,10 @@ import java.io.Serializable;
 import java.util.*;
 import java.util.stream.Stream;
 
+import de.hpi.mmds.nlp.template.AdjectiveNounTemplate;
+import de.hpi.mmds.nlp.template.AdjectiveVerbTemplate;
+import de.hpi.mmds.nlp.template.NounNounTemplate;
+import de.hpi.mmds.nlp.template.Template;
 import edu.stanford.nlp.ling.Tag;
 import edu.stanford.nlp.ling.TaggedWord;
 import edu.stanford.nlp.stats.ClassicCounter;
@@ -21,9 +25,10 @@ import javax.swing.text.html.HTML;
  */
 public class BigramThesis implements Serializable {
 
-    public static List<String> adjectiveTags = Arrays.asList("J", "JJR", "JJS");
-    public static List<String> nounTags = Arrays.asList("NN", "NNS", "NNP", "NNPS");
-    public static List<String> adverbTags = Arrays.asList("RB", "RBR", "RBS");
+    public static final List<String> adjectiveTags = Arrays.asList("J", "JJR", "JJS");
+    public static final List<String> nounTags = Arrays.asList("NN", "NNS", "NNP", "NNPS");
+    public static final List<String> adverbTags = Arrays.asList("RB", "RBR", "RBS");
+    public static final List<String> verbTags = Arrays.asList("VB", "VBD");
     public ClassicCounter<List<TaggedWord>> bigramCounter;
     public Map<Integer, ClassicCounter<List<TaggedWord>>> xGramCounter;
 
@@ -61,36 +66,18 @@ public class BigramThesis implements Serializable {
         }
     }
 
-    public static List<Tuple2<List<TaggedWord>, Double>> convertCounter(ClassicCounter<List<TaggedWord>> counter) {
-        List<Tuple2<List<TaggedWord>, Double>> result = new LinkedList<>();
-        for (List<TaggedWord> l: counter){
-            result.add(new Tuple2<>(l, counter.getCount(l)));
-        }
-        return result;
-    }
-
-    public static ClassicCounter<List<TaggedWord>> combineCounters(ClassicCounter<List<TaggedWord>> a, ClassicCounter<List<TaggedWord>> b) {
-        ClassicCounter<List<TaggedWord>> result = new ClassicCounter<>();
-        result.addAll(a);
-        result.addAll(b);
-        return result;
-    }
-
     public static List<Tuple2<List<TaggedWord>, Integer>> findKGramsEx(int k, List<TaggedWord> text){
         CircularFifoQueue<TaggedWord> queue = new CircularFifoQueue<>(k);
         List<Tuple2<List<TaggedWord>, Integer>> result = new LinkedList<>();
-        for (TaggedWord current_word : text) {
-            queue.add(current_word);
+        List<Template> templates = new LinkedList<>();
+        templates.add(new AdjectiveNounTemplate());
+        templates.add(new NounNounTemplate());
+        templates.add(new AdjectiveVerbTemplate());
+        for (TaggedWord currentWord : text) {
+            queue.add(currentWord);
             if (queue.isAtFullCapacity()) {
-                Boolean containsAdj = false;
-                Boolean containsNoun = false;
-                for (TaggedWord token : queue) {
-                    if (adjectiveTags.contains(token.tag()) || adverbTags.contains(token.tag())) {
-                        containsAdj = true;
-                    } else if (nounTags.contains(token.tag())) {
-                        containsNoun = true;
-                    }
-                    if (containsAdj && containsNoun) {
+                for (Template template : templates) {
+                    if (template.matches(currentWord)) {
                         result.add(new Tuple2<>(Arrays.asList(queue.toArray(new TaggedWord[k])), 1));
                         break;
                     }
