@@ -17,6 +17,7 @@ import org.apache.spark.sql.SQLContext;
 import scala.Tuple2;
 
 import java.io.File;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -55,7 +56,7 @@ public class Main {
             // Learn a mapping from words to Vectors.
             Word2Vec word2Vec = new Word2Vec()
                     .setVectorSize(150)
-                    .setMinCount(5);
+                    .setMinCount(0);
             Word2VecModel model = word2Vec.fit(textRdd);
 
             Tuple2<String, Object>[] synonyms = model.findSynonyms("cable", 10);
@@ -79,11 +80,69 @@ public class Main {
                 return new Tuple2<>(vectors, a._2);
             });
 
-            /*vectorRDD.reduce(a -> {
-                return a;
-            });*/
+            List<Tuple2<List<Vector>, Integer>> vectorList = vectorRDD.collect();
+            LinkedList<Tuple2<List<Vector>, Integer>> result = new LinkedList<>();
+            vectorList.stream().forEach(tuple -> {
+                boolean a = true;
+                for (int i = 0; i < result.size(); i++) {
+
+                    if (compare(tuple._1, result.get(i)._1)) {
+                        result.addFirst(new Tuple2<>(tuple._1, tuple._2 + result.get(0)._2));
+                        result.remove(i + 1);
+                        a = false;
+                    }
+                }
+                if (a) {
+                    result.add(tuple);
+                }
+            });
+            /*
+            JavaPairRDD<Tuple2<List<Vector>, Integer>, Tuple2<List<Vector>, Integer>> cartesianRDD = vectorRDD
+                    .cartesian(vectorRDD);
+
+            */
+
+            result.stream().limit(50).forEach(
+                    a -> {
+                        a._1.stream().forEach(v -> System.out.print(model.findSynonyms(v, 1)[0]._1 + " , "));
+                        System.out.print(a._2 + "\n");
+                    });
 
             System.out.println(finalRDD.take(10));
         }
+
+    }
+
+    public static double cosineSimilarity(double[] docVector1, double[] docVector2) {
+        double dotProduct = 0.0;
+        double magnitude1 = 0.0;
+        double magnitude2 = 0.0;
+        double cosineSimilarity = 0.0;
+
+        for (int i = 0; i < docVector1.length; i++) //docVector1 and docVector2 must be of same length
+        {
+            dotProduct += docVector1[i] * docVector2[i];  //a.b
+            magnitude1 += Math.pow(docVector1[i], 2);  //(a^2)
+            magnitude2 += Math.pow(docVector2[i], 2); //(b^2)
+        }
+
+        magnitude1 = Math.sqrt(magnitude1);//sqrt(a^2)
+        magnitude2 = Math.sqrt(magnitude2);//sqrt(b^2)
+
+        if (magnitude1 != 0.0 | magnitude2 != 0.0) {
+            cosineSimilarity = dotProduct / (magnitude1 * magnitude2);
+        } else {
+            return 0.0;
+        }
+        return cosineSimilarity;
+    }
+
+    public static boolean compare(List<Vector> listVec1, List<Vector> listVec2) {
+        double threshold = 0.99;
+        double sum = 0;
+        for (int i = 0; i < listVec1.size(); i++) {
+            sum += cosineSimilarity(listVec1.get(i).toArray(), listVec2.get(i).toArray());
+        }
+        return threshold < (sum / listVec1.size());
     }
 }
