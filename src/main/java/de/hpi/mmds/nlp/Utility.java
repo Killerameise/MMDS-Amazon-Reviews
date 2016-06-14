@@ -57,7 +57,7 @@ public class Utility {
 
     public static List<TaggedWord> posTag(String text){
         //PTBTokenizer tokenizer = new PTBTokenizer<>(new StringReader(text), new WordTokenFactory(), "");
-        return tagger.tagSentence(tokenizeW(text, true));
+        return tagger.tagSentence(tokenizeW(text.toLowerCase(), true));
     }
 
     /*
@@ -73,6 +73,26 @@ public class Utility {
                 }
         }
     }*/
+    public static Iterator<Map.Entry<String, Double>> valueIteratorReverse(TreeMap<String, Double> map) {
+        Set set = new TreeSet(new Comparator<Map.Entry<String, Double>>() {
+            public int compare(Map.Entry<String, Double> o1, Map.Entry<String, Double> o2) {
+                return  o1.getValue().compareTo(o2.getValue()) > 0 ? 1 : -1;
+            }
+        });
+        set.addAll(map.entrySet());
+        return set.iterator();
+    }
+
+    public static Iterator<Map.Entry<String, Double>> valueIterator(TreeMap<String, Double> map) {
+        Set set = new TreeSet(new Comparator<Map.Entry<String, Double>>() {
+            public int compare(Map.Entry<String, Double> o1, Map.Entry<String, Double> o2) {
+                return  o1.getValue().compareTo(o2.getValue()) > 0 ? -1 : 1;
+            }
+        });
+        set.addAll(map.entrySet());
+        return set.iterator();
+    }
+
 
     public static void classifyReview(){}
 }

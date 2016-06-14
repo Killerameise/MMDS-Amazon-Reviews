@@ -39,6 +39,26 @@
             <version>3.6.0</version>
             <classifier>models</classifier>
         </dependency>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-mllib_2.10</artifactId>
+            <version>1.6.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-sql_2.10</artifactId>
+            <version>1.6.1</version>
+        </dependency>
+        <!--<dependency>
+            <groupId>org.apache</groupId>
+            <artifactId>apache</artifactId>
+            <version>8</version>
+        </dependency>
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library-all</artifactId>
+            <version>2.12.0-M4</version>
+        </dependency>-->
     </dependencies>
     <build>
         <plugins>
