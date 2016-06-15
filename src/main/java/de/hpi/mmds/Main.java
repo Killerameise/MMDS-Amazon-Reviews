@@ -13,12 +13,11 @@ import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.mllib.feature.Word2Vec;
 import org.apache.spark.mllib.feature.Word2VecModel;
 import org.apache.spark.mllib.linalg.Vector;
-import org.apache.spark.sql.SQLContext;
 import scala.Tuple2;
 
 import java.io.File;
-import java.util.LinkedList;
-import java.util.List;
+import java.io.Serializable;
+import java.util.*;
 import java.util.stream.Collectors;
 
 
@@ -32,7 +31,6 @@ public class Main {
         conf.setIfMissing("spark.master", "local[8]");
         conf.setAppName("mmds-amazon");
         JavaSparkContext context = new JavaSparkContext(conf);
-        SQLContext sqlContext = new org.apache.spark.sql.SQLContext(context);
 
         File folder = new File(reviewPath);
         File[] reviewFiles = folder.listFiles((dir, name) -> name.endsWith(".json"));
@@ -41,7 +39,7 @@ public class Main {
 
             JavaRDD<String> fileRDD = context.textFile(file.getAbsolutePath());
 
-            JavaRDD<ReviewRecord> recordsRDD = fileRDD.map(JsonReader::readReviewJson);
+            JavaRDD<ReviewRecord> recordsRDD = fileRDD.map(JsonReader::readReviewJson); //.sample(false, 0.001);
 
             JavaRDD<List<TaggedWord>> tagRDD = recordsRDD.map(
                     (r) -> Utility.posTag(r.getReviewText())
@@ -59,8 +57,8 @@ public class Main {
                     .setMinCount(0);
             Word2VecModel model = word2Vec.fit(textRdd);
 
-            Tuple2<String, Object>[] synonyms = model.findSynonyms("cable", 10);
-            System.out.println(synonyms);
+            //Tuple2<String, Object>[] synonyms = model.findSynonyms("cable", 50);
+            //System.out.println(Arrays.asList(synonyms).stream().map(a -> a._1).collect(Collectors.joining(", ")));
 
             JavaRDD<List<Tuple2<List<TaggedWord>, Integer>>> rddValuesRDD = tagRDD.map(
                     taggedWords -> BigramThesis.findKGramsEx(3, taggedWords)
@@ -74,20 +72,25 @@ public class Main {
 
             JavaPairRDD<List<TaggedWord>, Integer> finalRDD = swappedFinalRDD.mapToPair(Tuple2::swap);
 
-            JavaPairRDD<List<Vector>, Integer> vectorRDD = finalRDD.mapToPair(a -> {
-                List<Vector> vectors = a._1.stream().map(taggedWord -> model.transform(taggedWord.word())).collect(
-                        Collectors.toList());
+            JavaPairRDD<List<VectorWithWords>, Integer> vectorRDD = finalRDD.mapToPair(a -> {
+                List<VectorWithWords> vectors = a._1.stream().map(
+                        taggedWord -> new VectorWithWords(model.transform(taggedWord.word()),
+                                                          new ArrayList<>(Arrays.asList(taggedWord.word()))
+                )).collect(Collectors.toList());
                 return new Tuple2<>(vectors, a._2);
             });
 
-            List<Tuple2<List<Vector>, Integer>> vectorList = vectorRDD.collect();
-            LinkedList<Tuple2<List<Vector>, Integer>> result = new LinkedList<>();
-            vectorList.stream().forEach(tuple -> {
+            List<Tuple2<List<VectorWithWords>, Integer>> vectorList = vectorRDD.collect();
+            LinkedList<Tuple2<List<VectorWithWords>, Integer>> result = new LinkedList<>();
+            for (Tuple2<List<VectorWithWords>, Integer> tuple : vectorList) {
                 boolean a = true;
                 for (int i = 0; i < result.size(); i++) {
-
                     if (compare(tuple._1, result.get(i)._1)) {
-                        result.addFirst(new Tuple2<>(tuple._1, tuple._2 + result.get(0)._2));
+                        List<VectorWithWords> vectorWithWords = result.get(i)._1;
+                        for(int j = 0; j < vectorWithWords.size(); j++){
+                            vectorWithWords.get(j).words.addAll(tuple._1.get(j).words);
+                        }
+                        result.addFirst(new Tuple2<>(vectorWithWords, tuple._2 + result.get(i)._2));
                         result.remove(i + 1);
                         a = false;
                     }
@@ -95,16 +98,16 @@ public class Main {
                 if (a) {
                     result.add(tuple);
                 }
-            });
+            }
             /*
             JavaPairRDD<Tuple2<List<Vector>, Integer>, Tuple2<List<Vector>, Integer>> cartesianRDD = vectorRDD
                     .cartesian(vectorRDD);
 
             */
 
-            result.stream().limit(50).forEach(
+            result.stream().sorted((a, b) -> b._2 - a._2).limit(50).forEach(
                     a -> {
-                        a._1.stream().forEach(v -> System.out.print(model.findSynonyms(v, 1)[0]._1 + " , "));
+                        a._1.stream().forEach(v -> System.out.print(mostCommon(v.words) + " , " + v.words + ", "));
                         System.out.print(a._2 + "\n");
                     });
 
@@ -137,12 +140,51 @@ public class Main {
         return cosineSimilarity;
     }
 
-    public static boolean compare(List<Vector> listVec1, List<Vector> listVec2) {
-        double threshold = 0.99;
+    public static boolean compare(List<VectorWithWords> listVec1, List<VectorWithWords> listVec2) {
+        double threshold = 0.9;
         double sum = 0;
         for (int i = 0; i < listVec1.size(); i++) {
-            sum += cosineSimilarity(listVec1.get(i).toArray(), listVec2.get(i).toArray());
+            sum += cosineSimilarity(listVec1.get(i).vector.toArray(), listVec2.get(i).vector.toArray());
+        }
+        if (sum / listVec1.size() > 1.0) {
+            System.out.println(sum + "   size: " + listVec1.size() + ", " + listVec2.size());
         }
         return threshold < (sum / listVec1.size());
+    }
+
+    public static <T> T mostCommon(List<T> list) {
+        Map<T, Integer> map = new HashMap<>();
+
+        for (T t : list) {
+            Integer val = map.get(t);
+            map.put(t, val == null ? 1 : val + 1);
+        }
+
+        Map.Entry<T, Integer> max = null;
+
+        for (Map.Entry<T, Integer> e : map.entrySet()) {
+            if (max == null || e.getValue() > max.getValue())
+                max = e;
+        }
+
+        return max.getKey();
+    }
+
+    public static class VectorWithWords implements Serializable {
+        public List<String> words;
+        public Vector       vector;
+
+        public VectorWithWords(final Vector vector, final List<String> words) {
+            this.words = words;
+            this.vector = vector;
+        }
+
+        @Override
+        public String toString() {
+            return "VectorWithWords{" +
+                   "words=" + words +
+                   ", vector=" + vector +
+                   '}';
+        }
     }
 }
