@@ -3,6 +3,7 @@ package de.hpi.mmds;
 import de.hpi.mmds.database.ReviewRecord;
 import de.hpi.mmds.json.JsonReader;
 import de.hpi.mmds.nlp.BigramThesis;
+import de.hpi.mmds.nlp.TopicAnalysis;
 import de.hpi.mmds.nlp.Utility;
 import edu.stanford.nlp.ling.TaggedWord;
 import edu.stanford.nlp.ling.Word;
@@ -10,9 +11,16 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.PairFunction;
+import org.apache.spark.broadcast.Broadcast;
+import org.apache.spark.ml.regression.LinearRegressionModel;
 import org.apache.spark.mllib.feature.Word2Vec;
 import org.apache.spark.mllib.feature.Word2VecModel;
 import org.apache.spark.mllib.linalg.Vector;
+import org.apache.spark.mllib.linalg.Vectors;
+import org.apache.spark.mllib.regression.LabeledPoint;
+import org.apache.spark.sql.DataFrame;
+import org.apache.spark.sql.SQLContext;
 import scala.Tuple2;
 
 import java.io.File;
@@ -31,6 +39,7 @@ public class Main {
         conf.setIfMissing("spark.master", "local[8]");
         conf.setAppName("mmds-amazon");
         JavaSparkContext context = new JavaSparkContext(conf);
+        SQLContext sqlContext = new SQLContext(context);
 
         File folder = new File(reviewPath);
         File[] reviewFiles = folder.listFiles((dir, name) -> name.endsWith(".json"));
@@ -41,14 +50,13 @@ public class Main {
 
             JavaRDD<ReviewRecord> recordsRDD = fileRDD.map(JsonReader::readReviewJson); //.sample(false, 0.001);
 
-            JavaRDD<List<TaggedWord>> tagRDD = recordsRDD.map(
-                    (r) -> Utility.posTag(r.getReviewText())
-            );
+            JavaPairRDD<List<TaggedWord>, Float> tagRDD = recordsRDD.mapToPair(
+                    (ReviewRecord x) -> new Tuple2(Utility.posTag(x.getReviewText()), x.getOverall()));
 
             tagRDD.cache();
 
             JavaRDD<List<String>> textRdd = tagRDD.map(
-                    a -> a.stream().map(Word::word).collect(Collectors.toList())
+                    a -> a._1.stream().map(Word::word).collect(Collectors.toList())
             );
 
             // Learn a mapping from words to Vectors.
@@ -61,11 +69,20 @@ public class Main {
             //System.out.println(Arrays.asList(synonyms).stream().map(a -> a._1).collect(Collectors.joining(", ")));
 
             JavaRDD<List<Tuple2<List<TaggedWord>, Integer>>> rddValuesRDD = tagRDD.map(
-                    taggedWords -> BigramThesis.findKGramsEx(3, taggedWords)
+                    taggedWords -> BigramThesis.findKGramsEx(3, taggedWords._1)
             );
 
             JavaPairRDD<List<TaggedWord>, Integer> semiFinalRDD = rddValuesRDD.flatMapToPair(a -> a).reduceByKey(
                     (a, b) -> a + b);
+            semiFinalRDD.cache();
+
+            JavaRDD<List<TaggedWord>> overallFeatures = semiFinalRDD.map(a -> a._1);
+            Set<List<TaggedWord>> features = new HashSet<>(overallFeatures.collect());
+            List<List<TaggedWord>> asd = new ArrayList<>(features.size());
+            asd.addAll(features);
+            Broadcast<List<List<TaggedWord>>> featureBroadcast = context.broadcast(asd);
+
+
 
             JavaPairRDD<Integer, List<TaggedWord>> swappedFinalRDD = semiFinalRDD.mapToPair(Tuple2::swap).sortByKey(
                     false);
@@ -81,6 +98,7 @@ public class Main {
             });
 
             List<Tuple2<List<VectorWithWords>, Integer>> vectorList = vectorRDD.collect();
+
             LinkedList<Tuple2<List<VectorWithWords>, Integer>> result = new LinkedList<>();
             for (Tuple2<List<VectorWithWords>, Integer> tuple : vectorList) {
                 boolean a = true;
@@ -99,6 +117,57 @@ public class Main {
                     result.add(tuple);
                 }
             }
+
+            JavaRDD points = tagRDD.map(rating -> {
+                List<List<TaggedWord>> bc = featureBroadcast.getValue();
+                double[] v = new double[bc.size()];
+                List<Tuple2<List<TaggedWord>, Integer>> output =  BigramThesis.findKGramsEx(3, rating._1);
+                for (int i = 0; i < bc.size(); i++) {
+                    for (Tuple2<List<TaggedWord>, Integer> tuple : output){
+                        if (tuple._1.equals(bc.get(i))) {
+                            v[i] = tuple._2;
+                        }
+                    }
+                }
+                return new LabeledPoint((double) (rating._2), Vectors.dense(v));
+            });
+
+            DataFrame training = sqlContext.createDataFrame(points, LabeledPoint.class);
+
+
+            org.apache.spark.ml.regression.LinearRegression lr = new org.apache.spark.ml.regression.LinearRegression();
+
+            lr.setMaxIter(10)
+                    .setRegParam(0.01);
+
+            LinearRegressionModel model1 = lr.train(training);
+
+            System.out.println("Model 1 was fit using parameters: " + model1.coefficients());
+
+            Map<List<TaggedWord>, Double> map = new HashMap<>();
+            double[] coeffs = model1.coefficients().toArray();
+            for (int i = 0; i < coeffs.length; i++) {
+                map.put(asd.get(i), coeffs[i]);
+            }
+
+            Iterator<Map.Entry<List<TaggedWord>, Double>> i = Utility.valueIterator(map);
+            System.out.println("Positive Words");
+            int j = 0;
+            while (j < 50) {
+                Map.Entry<List<TaggedWord>, Double> entry = i.next();
+                System.out.println(entry);
+                j++;
+            }
+            System.out.println("");
+            System.out.println("Negative Words");
+            i = Utility.valueIteratorReverse(map);
+            j = 0;
+            while (j < 50) {
+                Map.Entry<List<TaggedWord>, Double> entry = i.next();
+                System.out.println(entry);
+                j++;
+
+            }
             /*
             JavaPairRDD<Tuple2<List<Vector>, Integer>, Tuple2<List<Vector>, Integer>> cartesianRDD = vectorRDD
                     .cartesian(vectorRDD);
@@ -111,7 +180,7 @@ public class Main {
                         System.out.print(a._2 + "\n");
                     });
 
-            System.out.println(finalRDD.take(10));
+            System.out.println(overallFeatures);
         }
 
     }

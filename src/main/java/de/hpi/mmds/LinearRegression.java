@@ -98,7 +98,7 @@ public class LinearRegression {
                 map.put(overallFeatures[i], coeffs[i]);
             }
 
-            Iterator<Map.Entry<String, Double>> i = Utility.valueIterator(map);
+            /*Iterator<Map.Entry<String, Double>> i = Utility.valueIterator(map);
             System.out.println("Positive Words");
             int j = 0;
             while (j < 50) {
@@ -118,7 +118,7 @@ public class LinearRegression {
                     System.out.println(entry);
                     j++;
                 }
-            }
+            }*/
         }
     }
 }
