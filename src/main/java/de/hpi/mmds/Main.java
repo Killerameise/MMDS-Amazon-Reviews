@@ -39,7 +39,7 @@ public class Main {
 
             JavaRDD<String> fileRDD = context.textFile(file.getAbsolutePath());
 
-            JavaRDD<ReviewRecord> recordsRDD = fileRDD.map(JsonReader::readReviewJson); //.sample(false, 0.001);
+            JavaRDD<ReviewRecord> recordsRDD = fileRDD.map(JsonReader::readReviewJson);
 
             JavaRDD<List<TaggedWord>> tagRDD = recordsRDD.map(
                     (r) -> Utility.posTag(r.getReviewText())
@@ -81,20 +81,10 @@ public class Main {
             });
 
             JavaPairRDD<Tuple2<List<VectorWithWords>, Integer>, Tuple2<List<VectorWithWords>, Integer>> cartesianRDD =
-                    vectorRDD.cartesian(vectorRDD);
-
-            JavaPairRDD<Tuple2<List<VectorWithWords>, Integer>, Tuple2<List<VectorWithWords>, Integer>> comparedRDD =
-                    cartesianRDD.flatMapToPair((t) -> {
-                        List<Tuple2<Tuple2<List<VectorWithWords>, Integer>, Tuple2<List<VectorWithWords>, Integer>>>
-                                result = new ArrayList<>();
-                        if (compare(t._1._1, t._2._1)) {
-                            result.add(t);
-                        }
-                        return result;
-                    });
+                    vectorRDD.cartesian(vectorRDD).filter((t) -> compare(t._1._1, t._2._1));
 
             JavaPairRDD<Tuple2<List<VectorWithWords>, Integer>, Tuple2<List<VectorWithWords>, Integer>> resultsRDD =
-                    comparedRDD.aggregateByKey(
+                    cartesianRDD.aggregateByKey(
                             new Tuple2<List<VectorWithWords>, Integer>(null, 0),
                             (acc, value) -> {
                                 if (acc._1 == null) {
@@ -132,11 +122,6 @@ public class Main {
                     result.add(tuple);
                 }
             }*/
-            /*
-            JavaPairRDD<Tuple2<List<Vector>, Integer>, Tuple2<List<Vector>, Integer>> cartesianRDD = vectorRDD
-                    .cartesian(vectorRDD);
-
-            */
 
             /*result.stream().sorted((a, b) -> b._2 - a._2).limit(50).forEach(
                     a -> {
@@ -144,7 +129,13 @@ public class Main {
                         System.out.print(a._2 + "\n");
                     });
             */
-            System.out.println(resultsRDD.take(10));
+            System.out.println(resultsRDD.collect().stream().map((t) -> {
+                return new Tuple2<>(
+                        t._2._1.stream()
+                                .map((s) -> s.words)
+                                .collect(Collectors.toList()),
+                        t._2._2);
+            }).sorted((a, b) -> b._2 - a._2).limit(10).collect(Collectors.toList()));
         }
 
     }
@@ -178,9 +169,6 @@ public class Main {
         double sum = 0;
         for (int i = 0; i < listVec1.size(); i++) {
             sum += cosineSimilarity(listVec1.get(i).vector.toArray(), listVec2.get(i).vector.toArray());
-        }
-        if (sum / listVec1.size() > 1.0) {
-            System.out.println(sum + "   size: " + listVec1.size() + ", " + listVec2.size());
         }
         return threshold < (sum / listVec1.size());
     }
