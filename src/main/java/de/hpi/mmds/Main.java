@@ -75,19 +75,52 @@ public class Main {
             JavaPairRDD<List<VectorWithWords>, Integer> vectorRDD = finalRDD.mapToPair(a -> {
                 List<VectorWithWords> vectors = a._1.stream().map(
                         taggedWord -> new VectorWithWords(model.transform(taggedWord.word()),
-                                                          new ArrayList<>(Arrays.asList(taggedWord.word()))
-                )).collect(Collectors.toList());
+                                new ArrayList<>(Arrays.asList(taggedWord.word()))
+                        )).collect(Collectors.toList());
                 return new Tuple2<>(vectors, a._2);
             });
 
-            List<Tuple2<List<VectorWithWords>, Integer>> vectorList = vectorRDD.collect();
+            JavaPairRDD<Tuple2<List<VectorWithWords>, Integer>, Tuple2<List<VectorWithWords>, Integer>> cartesianRDD =
+                    vectorRDD.cartesian(vectorRDD);
+
+            JavaPairRDD<Tuple2<List<VectorWithWords>, Integer>, Tuple2<List<VectorWithWords>, Integer>> comparedRDD =
+                    cartesianRDD.flatMapToPair((t) -> {
+                        List<Tuple2<Tuple2<List<VectorWithWords>, Integer>, Tuple2<List<VectorWithWords>, Integer>>>
+                                result = new ArrayList<>();
+                        if (compare(t._1._1, t._2._1)) {
+                            result.add(t);
+                        }
+                        return result;
+                    });
+
+            JavaPairRDD<Tuple2<List<VectorWithWords>, Integer>, Tuple2<List<VectorWithWords>, Integer>> resultsRDD =
+                    comparedRDD.aggregateByKey(
+                            new Tuple2<List<VectorWithWords>, Integer>(null, 0),
+                            (acc, value) -> {
+                                if (acc._1 == null) {
+                                    return value;
+                                } else {
+                                    List<VectorWithWords> resultVector = acc._1;
+                                    for (int i = 0; i < value._1.size(); i++) {
+                                        resultVector.get(i).words.addAll(value._1.get(i).words);
+                                    }
+                                    return new Tuple2<>(resultVector, acc._2 + value._2);
+                                }
+                            },
+                            (acc1, acc2) -> {
+                                return new Tuple2<>(acc1._1, acc1._2 + acc2._2);
+                            }
+                    );
+
+
+            /*List<Tuple2<List<VectorWithWords>, Integer>> vectorList = vectorRDD.collect();
             LinkedList<Tuple2<List<VectorWithWords>, Integer>> result = new LinkedList<>();
             for (Tuple2<List<VectorWithWords>, Integer> tuple : vectorList) {
                 boolean a = true;
                 for (int i = 0; i < result.size(); i++) {
                     if (compare(tuple._1, result.get(i)._1)) {
                         List<VectorWithWords> vectorWithWords = result.get(i)._1;
-                        for(int j = 0; j < vectorWithWords.size(); j++){
+                        for (int j = 0; j < vectorWithWords.size(); j++) {
                             vectorWithWords.get(j).words.addAll(tuple._1.get(j).words);
                         }
                         result.addFirst(new Tuple2<>(vectorWithWords, tuple._2 + result.get(i)._2));
@@ -98,20 +131,20 @@ public class Main {
                 if (a) {
                     result.add(tuple);
                 }
-            }
+            }*/
             /*
             JavaPairRDD<Tuple2<List<Vector>, Integer>, Tuple2<List<Vector>, Integer>> cartesianRDD = vectorRDD
                     .cartesian(vectorRDD);
 
             */
 
-            result.stream().sorted((a, b) -> b._2 - a._2).limit(50).forEach(
+            /*result.stream().sorted((a, b) -> b._2 - a._2).limit(50).forEach(
                     a -> {
                         a._1.stream().forEach(v -> System.out.print(mostCommon(v.words) + " , " + v.words + ", "));
                         System.out.print(a._2 + "\n");
                     });
-
-            System.out.println(finalRDD.take(10));
+            */
+            System.out.println(resultsRDD.take(10));
         }
 
     }
@@ -172,7 +205,7 @@ public class Main {
 
     public static class VectorWithWords implements Serializable {
         public List<String> words;
-        public Vector       vector;
+        public Vector vector;
 
         public VectorWithWords(final Vector vector, final List<String> words) {
             this.words = words;
@@ -182,9 +215,9 @@ public class Main {
         @Override
         public String toString() {
             return "VectorWithWords{" +
-                   "words=" + words +
-                   ", vector=" + vector +
-                   '}';
+                    "words=" + words +
+                    ", vector=" + vector +
+                    '}';
         }
     }
 }
