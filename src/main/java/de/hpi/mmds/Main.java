@@ -84,21 +84,13 @@ public class Main {
                     vectorRDD.cartesian(vectorRDD).filter((t) -> compare(t._1._1, t._2._1));
 
             JavaPairRDD<Tuple2<List<VectorWithWords>, Integer>, Tuple2<List<VectorWithWords>, Integer>> resultsRDD =
-                    cartesianRDD.aggregateByKey(
-                            new Tuple2<List<VectorWithWords>, Integer>(null, 0),
-                            (acc, value) -> {
-                                if (acc._1 == null) {
-                                    return value;
-                                } else {
-                                    List<VectorWithWords> resultVector = acc._1;
-                                    for (int i = 0; i < value._1.size(); i++) {
-                                        resultVector.get(i).words.addAll(value._1.get(i).words);
-                                    }
-                                    return new Tuple2<>(resultVector, acc._2 + value._2);
+                    cartesianRDD.reduceByKey(
+                            (a, b) -> {
+                                List<VectorWithWords> resultVector = a._1;
+                                for (int i = 0; i < b._1.size(); i++) {
+                                    resultVector.get(i).words.addAll(b._1.get(i).words);
                                 }
-                            },
-                            (acc1, acc2) -> {
-                                return new Tuple2<>(acc1._1, acc1._2 + acc2._2);
+                                return new Tuple2<>(resultVector, a._2 + b._2);
                             }
                     );
 
