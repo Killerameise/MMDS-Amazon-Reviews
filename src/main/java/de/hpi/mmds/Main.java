@@ -57,8 +57,6 @@ public class Main {
                     .setMinCount(0);
             Word2VecModel model = word2Vec.fit(textRdd);
 
-            //Tuple2<String, Object>[] synonyms = model.findSynonyms("cable", 50);
-            //System.out.println(Arrays.asList(synonyms).stream().map(a -> a._1).collect(Collectors.joining(", ")));
 
             JavaRDD<List<Tuple2<List<TaggedWord>, Integer>>> rddValuesRDD = tagRDD.map(
                     taggedWords -> BigramThesis.findKGramsEx(3, taggedWords)
@@ -80,54 +78,54 @@ public class Main {
                 return new Tuple2<>(vectors, a._2);
             });
 
-            JavaPairRDD<Tuple2<List<VectorWithWords>, Integer>, Tuple2<List<VectorWithWords>, Integer>> cartesianRDD =
-                    vectorRDD.cartesian(vectorRDD).filter((t) -> compare(t._1._1, t._2._1));
-
-            JavaPairRDD<Tuple2<List<VectorWithWords>, Integer>, Tuple2<List<VectorWithWords>, Integer>> resultsRDD =
-                    cartesianRDD.reduceByKey(
-                            (a, b) -> {
-                                List<VectorWithWords> resultVector = a._1;
-                                for (int i = 0; i < b._1.size(); i++) {
-                                    resultVector.get(i).words.addAll(b._1.get(i).words);
-                                }
-                                return new Tuple2<>(resultVector, a._2 + b._2);
+            List<Tuple2<List<VectorWithWords>, Integer>> clusters = vectorRDD.aggregate(
+                    new LinkedList<Tuple2<List<VectorWithWords>, Integer>>(),
+                    (List<Tuple2<List<VectorWithWords>, Integer>> acc, Tuple2<List<VectorWithWords>, Integer> value) -> {
+                        Boolean foundOne = false;
+                        List<Tuple2<List<VectorWithWords>, Integer>> new_acc = new LinkedList<>(acc);
+                        //Collections.copy(new_acc, acc);
+                        for (int i = 0; i<acc.size(); i++){
+                            Tuple2<List<VectorWithWords>, Integer> l = acc.get(i);
+                            if(compare(value._1, l._1)){
+                                new_acc.remove(i);
+                                new_acc.add(new Tuple2<>(l._1, l._2 + value._2));
+                                foundOne = true;
+                                break;
                             }
-                    );
-
-
-            /*List<Tuple2<List<VectorWithWords>, Integer>> vectorList = vectorRDD.collect();
-            LinkedList<Tuple2<List<VectorWithWords>, Integer>> result = new LinkedList<>();
-            for (Tuple2<List<VectorWithWords>, Integer> tuple : vectorList) {
-                boolean a = true;
-                for (int i = 0; i < result.size(); i++) {
-                    if (compare(tuple._1, result.get(i)._1)) {
-                        List<VectorWithWords> vectorWithWords = result.get(i)._1;
-                        for (int j = 0; j < vectorWithWords.size(); j++) {
-                            vectorWithWords.get(j).words.addAll(tuple._1.get(j).words);
                         }
-                        result.addFirst(new Tuple2<>(vectorWithWords, tuple._2 + result.get(i)._2));
-                        result.remove(i + 1);
-                        a = false;
-                    }
-                }
-                if (a) {
-                    result.add(tuple);
-                }
-            }*/
+                        if (!foundOne){
+                            new_acc.add(value);
+                        }
+                        return new_acc;
 
-            /*result.stream().sorted((a, b) -> b._2 - a._2).limit(50).forEach(
-                    a -> {
-                        a._1.stream().forEach(v -> System.out.print(mostCommon(v.words) + " , " + v.words + ", "));
-                        System.out.print(a._2 + "\n");
-                    });
-            */
-            System.out.println(resultsRDD.collect().stream().map((t) -> {
-                return new Tuple2<>(
-                        t._2._1.stream()
-                                .map((s) -> s.words)
-                                .collect(Collectors.toList()),
-                        t._2._2);
-            }).sorted((a, b) -> b._2 - a._2).limit(10).collect(Collectors.toList()));
+                    },
+                    (List<Tuple2<List<VectorWithWords>, Integer>> acc1, List<Tuple2<List<VectorWithWords>, Integer>> acc2) -> {
+                        List<Tuple2<List<VectorWithWords>, Integer>> dotProduct = new LinkedList<>();
+                        List<Tuple2<List<VectorWithWords>, Integer>> result = new LinkedList<>();
+                        dotProduct.addAll(acc1);
+                        dotProduct.addAll(acc2);
+                        for (int i = 0; i< dotProduct.size(); i++){
+                            Boolean foundOne = false;
+                            Tuple2<List<VectorWithWords>, Integer> l1 = dotProduct.get(i);
+                            for (int j = i+1; j< dotProduct.size(); j++){
+                                Tuple2<List<VectorWithWords>, Integer> l2 = dotProduct.get(j);
+                                if(compare(l1._1, l2._1)){
+                                    result.add(new Tuple2<>(l1._1, l1._2+l2._2));
+                                    foundOne = true;
+                                    break;
+                                }
+                            }
+                            if (!foundOne){
+                                result.add(new Tuple2<>(l1._1, l1._2));
+                            }
+                        }
+                        return result;
+                    }
+            );
+
+
+            clusters.forEach(System.out::println);
+
         }
 
     }
