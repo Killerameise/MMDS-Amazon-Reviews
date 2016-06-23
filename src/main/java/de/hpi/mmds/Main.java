@@ -5,6 +5,7 @@ import de.hpi.mmds.json.JsonReader;
 import de.hpi.mmds.nlp.BigramThesis;
 import de.hpi.mmds.nlp.Utility;
 import de.hpi.mmds.nlp.template.AdjectiveNounTemplate;
+import de.hpi.mmds.nlp.template.NounNounTemplate;
 import de.hpi.mmds.nlp.template.Template;
 import edu.stanford.nlp.ling.TaggedWord;
 import edu.stanford.nlp.ling.Word;
@@ -61,7 +62,7 @@ public class Main {
             Word2VecModel model = word2Vec.fit(textRdd);
 
 
-            Template template = new AdjectiveNounTemplate();
+            Template template = new NounNounTemplate();
             JavaRDD<List<Tuple2<List<TaggedWord>, Integer>>> rddValuesRDD = tagRDD.map(
                     taggedWords -> BigramThesis.findKGramsEx(3, taggedWords, template)
             );
