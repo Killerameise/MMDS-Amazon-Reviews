@@ -73,7 +73,7 @@ public class Utility {
                 }
         }
     }*/
-    public static Iterator<Map.Entry<String, Double>> valueIteratorReverse(TreeMap<String, Double> map) {
+    public static Iterator<Map.Entry<List<TaggedWord>, Double>> valueIteratorReverse(Map<List<TaggedWord>, Double> map) {
         Set set = new TreeSet(new Comparator<Map.Entry<String, Double>>() {
             public int compare(Map.Entry<String, Double> o1, Map.Entry<String, Double> o2) {
                 return  o1.getValue().compareTo(o2.getValue()) > 0 ? 1 : -1;
@@ -83,7 +83,7 @@ public class Utility {
         return set.iterator();
     }
 
-    public static Iterator<Map.Entry<String, Double>> valueIterator(TreeMap<String, Double> map) {
+    public static Iterator<Map.Entry<List<TaggedWord>, Double>> valueIterator(Map<List<TaggedWord>, Double> map) {
         Set set = new TreeSet(new Comparator<Map.Entry<String, Double>>() {
             public int compare(Map.Entry<String, Double> o1, Map.Entry<String, Double> o2) {
                 return  o1.getValue().compareTo(o2.getValue()) > 0 ? -1 : 1;

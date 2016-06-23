@@ -12,9 +12,15 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.broadcast.Broadcast;
+import org.apache.spark.ml.regression.LinearRegressionModel;
 import org.apache.spark.mllib.feature.Word2Vec;
 import org.apache.spark.mllib.feature.Word2VecModel;
 import org.apache.spark.mllib.linalg.Vector;
+import org.apache.spark.mllib.linalg.Vectors;
+import org.apache.spark.mllib.regression.LabeledPoint;
+import org.apache.spark.sql.DataFrame;
+import org.apache.spark.sql.SQLContext;
 import scala.Tuple2;
 import scala.Tuple3;
 
@@ -34,6 +40,7 @@ public class Main {
         conf.setIfMissing("spark.master", "local[8]");
         conf.setAppName("mmds-amazon");
         JavaSparkContext context = new JavaSparkContext(conf);
+        SQLContext sqlContext = new SQLContext(context);
 
         File folder = new File(reviewPath);
         File[] reviewFiles = folder.listFiles((dir, name) -> name.endsWith(".json"));
@@ -44,14 +51,13 @@ public class Main {
 
             JavaRDD<ReviewRecord> recordsRDD = fileRDD.map(JsonReader::readReviewJson);
 
-            JavaRDD<List<TaggedWord>> tagRDD = recordsRDD.map(
-                    (r) -> Utility.posTag(r.getReviewText())
-            );
+            JavaPairRDD<List<TaggedWord>, Float> tagRDD = recordsRDD.mapToPair(
+                    (ReviewRecord x) -> new Tuple2(Utility.posTag(x.getReviewText()), x.getOverall()));
 
             tagRDD.cache();
 
             JavaRDD<List<String>> textRdd = tagRDD.map(
-                    a -> a.stream().map(Word::word).collect(Collectors.toList())
+                    a -> a._1.stream().map(Word::word).collect(Collectors.toList())
             );
 
             // Learn a mapping from words to Vectors.
@@ -63,7 +69,7 @@ public class Main {
 
             Template template = new AdjectiveNounTemplate();
             JavaRDD<List<Tuple2<List<TaggedWord>, Integer>>> rddValuesRDD = tagRDD.map(
-                    taggedWords -> BigramThesis.findKGramsEx(3, taggedWords, template)
+                    taggedWords -> BigramThesis.findKGramsEx(3, taggedWords._1(), template)
             );
 
             JavaPairRDD<List<TaggedWord>, Integer> semiFinalRDD = rddValuesRDD.flatMapToPair(a -> a).reduceByKey(
@@ -144,6 +150,74 @@ public class Main {
                 System.out.println("Feature: " + template.getFeature(representation));
             });
             System.out.println(clusters.size());
+
+            List<List<VectorWithWords>> features = new ArrayList<>(clusters.size());
+            Map<List<TaggedWord>, Integer> featureMap= new HashMap<>();
+            clusters.forEach((cluster) -> {
+                        features.add(cluster._1());
+                        int index = features.size()-1;
+                        cluster._3().forEach(listOfTaggedWords ->{
+                            featureMap.put(listOfTaggedWords, index);
+                        });
+
+                    }
+            );
+            Broadcast<List<List<VectorWithWords>>> featureBroadcast = context.broadcast(features);
+            Broadcast<Map<List<TaggedWord>, Integer>> featureMapBroadcast = context.broadcast(featureMap);
+
+            JavaRDD points = tagRDD.map(rating -> {
+                List<List<VectorWithWords>> fbc = featureBroadcast.getValue();
+                Map<List<TaggedWord>, Integer> fmp = featureMapBroadcast.getValue();
+                double[] v = new double[fbc.size()];
+                List<Tuple2<List<TaggedWord>, Integer>> output =  BigramThesis.findKGramsEx(3, rating._1, template);
+                output.forEach((Tuple2<List<TaggedWord>, Integer> feature) ->{
+                    v[fmp.get(feature._1())] = feature._2();
+                });
+                return new LabeledPoint((double) (rating._2), Vectors.dense(v));
+            });
+
+            DataFrame training = sqlContext.createDataFrame(points, LabeledPoint.class);
+
+
+            org.apache.spark.ml.regression.LinearRegression lr = new org.apache.spark.ml.regression.LinearRegression();
+
+            lr.setMaxIter(10)
+                    .setRegParam(0.01);
+
+            LinearRegressionModel model1 = lr.train(training);
+
+            System.out.println("Model 1 was fit using parameters: " + model1.coefficients());
+
+            Map<List<TaggedWord>, Double> map = new HashMap<>();
+            double[] coeffs = model1.coefficients().toArray();
+            for (int i = 0; i < coeffs.length; i++) {
+                int index = i;
+                featureMap.entrySet().stream().filter((Map.Entry<List<TaggedWord>, Integer> entry) -> (entry.getValue()==index))
+                        .forEach((Map.Entry<List<TaggedWord>, Integer> entry2) -> {
+                            map.put(entry2.getKey(), coeffs[index]);
+                        });
+
+            }
+
+            Iterator<Map.Entry<List<TaggedWord>, Double>> i = Utility.valueIterator(map);
+            System.out.println("Positive Words");
+            int j = 0;
+            while (j < 50) {
+                Map.Entry<List<TaggedWord>, Double> entry = i.next();
+                System.out.println(entry);
+                j++;
+            }
+            System.out.println("");
+            System.out.println("Negative Words");
+            i = Utility.valueIteratorReverse(map);
+            j = 0;
+            while (j < 50) {
+                Map.Entry<List<TaggedWord>, Double> entry = i.next();
+                System.out.println(entry);
+                j++;
+
+            }
+
 
         }
 

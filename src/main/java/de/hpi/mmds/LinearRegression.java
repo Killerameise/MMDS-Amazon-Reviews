@@ -92,7 +92,7 @@ public class LinearRegression {
             System.out.println("Model 1 was fit using parameters: " + model1.coefficients());
 
 
-            TreeMap<String, Double> map = new TreeMap<>();
+            /*Map<String, Double> map = new TreeMap<>();
             double[] coeffs = model1.coefficients().toArray();
             for (int i = 0; i < coeffs.length; i++) {
                 map.put(overallFeatures[i], coeffs[i]);
@@ -118,7 +118,7 @@ public class LinearRegression {
                     System.out.println(entry);
                     j++;
                 }
-            }
+            }*/
         }
     }
 }
