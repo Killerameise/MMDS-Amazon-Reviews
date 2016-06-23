@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
 
 
 public class Main {
-    private final static String reviewPath = "resources/reviews";
+    private static String reviewPath = "resources/reviews";
 
     public static void main(String args[]) {
 
@@ -42,6 +42,10 @@ public class Main {
         conf.setAppName("mmds-amazon");
         JavaSparkContext context = new JavaSparkContext(conf);
         SQLContext sqlContext = new SQLContext(context);
+
+        if (args.length == 1) {
+            reviewPath = args[0];
+        }
 
         File folder = new File(reviewPath);
         File[] reviewFiles = folder.listFiles((dir, name) -> name.endsWith(".json"));
