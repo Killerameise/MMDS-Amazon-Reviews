@@ -4,6 +4,8 @@ import de.hpi.mmds.nlp.BigramThesis;
 import edu.stanford.nlp.ling.TaggedWord;
 
 import java.util.Collection;
+import java.util.LinkedList;
+import java.util.List;
 
 public class NounNounTemplate extends Template {
 
@@ -21,6 +23,14 @@ public class NounNounTemplate extends Template {
 
     @Override
     public String getFeature(Collection<TaggedWord> queue) {
-        return null;
+        List<String> result = new LinkedList<>();
+        MatchResult matchResult = new MatchResult(0, false);
+        for (TaggedWord taggedWord : queue) {
+            matchResult = matches(taggedWord, matchResult);
+            if (matchResult.accepts) {
+                result.add(taggedWord.word());
+            }
+        }
+        return String.join(" ", result);
     }
 }
