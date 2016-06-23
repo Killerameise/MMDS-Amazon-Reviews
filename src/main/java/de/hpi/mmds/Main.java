@@ -151,27 +151,30 @@ public class Main {
             });
             System.out.println(clusters.size());
 
-            List<List<VectorWithWords>> features = new ArrayList<>(clusters.size());
-            Map<List<TaggedWord>, Integer> featureMap= new HashMap<>();
+            Set<String> features1 = new HashSet<>();
+
+            Map<List<TaggedWord>, String> featureMap= new HashMap<>();
             clusters.forEach((cluster) -> {
-                        features.add(cluster._1());
-                        int index = features.size()-1;
+                        List<TaggedWord> representation = cluster._1().stream().map((s) -> s.words.get(0)).collect(Collectors.toList());
+                        String feature = template.getFeature(representation);
+                        features1.add(feature);
                         cluster._3().forEach(listOfTaggedWords ->{
-                            featureMap.put(listOfTaggedWords, index);
+                            featureMap.put(listOfTaggedWords, feature);
                         });
 
                     }
             );
-            Broadcast<List<List<VectorWithWords>>> featureBroadcast = context.broadcast(features);
-            Broadcast<Map<List<TaggedWord>, Integer>> featureMapBroadcast = context.broadcast(featureMap);
+            List<String> features = new ArrayList<>(features1);
+            Broadcast<List<String>> featureBroadcast = context.broadcast(features);
+            Broadcast<Map<List<TaggedWord>, String>> featureMapBroadcast = context.broadcast(featureMap);
 
             JavaRDD points = tagRDD.map(rating -> {
-                List<List<VectorWithWords>> fbc = featureBroadcast.getValue();
-                Map<List<TaggedWord>, Integer> fmp = featureMapBroadcast.getValue();
+                List<String> fbc = featureBroadcast.getValue();
+                Map<List<TaggedWord>, String> fmp = featureMapBroadcast.getValue();
                 double[] v = new double[fbc.size()];
                 List<Tuple2<List<TaggedWord>, Integer>> output =  BigramThesis.findKGramsEx(3, rating._1, template);
                 output.forEach((Tuple2<List<TaggedWord>, Integer> feature) ->{
-                    v[fmp.get(feature._1())] = feature._2();
+                    v[fbc.indexOf(fmp.get(feature._1()))] = feature._2(); //TODO: Index of is ugly and costs time
                 });
                 return new LabeledPoint((double) (rating._2), Vectors.dense(v));
             });
@@ -188,22 +191,22 @@ public class Main {
 
             System.out.println("Model 1 was fit using parameters: " + model1.coefficients());
 
-            Map<List<TaggedWord>, Double> map = new HashMap<>();
+            Map<String, Double> map = new HashMap<>();
             double[] coeffs = model1.coefficients().toArray();
             for (int i = 0; i < coeffs.length; i++) {
                 int index = i;
-                featureMap.entrySet().stream().filter((Map.Entry<List<TaggedWord>, Integer> entry) -> (entry.getValue()==index))
-                        .forEach((Map.Entry<List<TaggedWord>, Integer> entry2) -> {
-                            map.put(entry2.getKey(), coeffs[index]);
+                featureMap.entrySet().stream().filter((Map.Entry<List<TaggedWord>, String> entry) -> (features.indexOf(entry.getValue()) == index))
+                        .forEach((Map.Entry<List<TaggedWord>, String> entry2) -> {
+                            map.put(entry2.getValue(), coeffs[index]);
                         });
 
             }
 
-            Iterator<Map.Entry<List<TaggedWord>, Double>> i = Utility.valueIterator(map);
+            Iterator<Map.Entry<String, Double>> i = Utility.valueIterator(map);
             System.out.println("Positive Words");
             int j = 0;
             while (j < 50) {
-                Map.Entry<List<TaggedWord>, Double> entry = i.next();
+                Map.Entry<String, Double> entry = i.next();
                 System.out.println(entry);
                 j++;
             }
@@ -212,7 +215,7 @@ public class Main {
             i = Utility.valueIteratorReverse(map);
             j = 0;
             while (j < 50) {
-                Map.Entry<List<TaggedWord>, Double> entry = i.next();
+                Map.Entry<String, Double> entry = i.next();
                 System.out.println(entry);
                 j++;
 
