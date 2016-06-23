@@ -25,6 +25,7 @@ import org.apache.spark.sql.SQLContext;
 import scala.Tuple2;
 import scala.Tuple3;
 
+import javax.swing.text.html.HTML;
 import java.io.File;
 import java.io.Serializable;
 import java.util.*;
@@ -87,7 +88,7 @@ public class Main {
         JavaPairRDD<List<VectorWithWords>, Integer> vectorRDD = finalRDD.mapToPair(a -> {
             List<VectorWithWords> vectors = a._1.stream().map(
                     taggedWord -> new VectorWithWords(model.transform(taggedWord.word()),
-                            new ArrayList<>(Arrays.asList(taggedWord))
+                            new ArrayList<>(Arrays.asList(taggedWord)), template
                     )).collect(Collectors.toList());
             return new Tuple2<>(vectors, a._2);
         });
@@ -281,10 +282,14 @@ public class Main {
     public static class VectorWithWords implements Serializable {
         public List<TaggedWord> words;
         public Vector vector;
+        public Template template;
+        public String representative;
 
-        public VectorWithWords(final Vector vector, final List<TaggedWord> words) {
+        public VectorWithWords(final Vector vector, final List<TaggedWord> words, final Template template) {
             this.words = words;
+            this.template = template;
             this.vector = vector;
+            this.representative = this.template.getFeature(this.words);
         }
 
         @Override
