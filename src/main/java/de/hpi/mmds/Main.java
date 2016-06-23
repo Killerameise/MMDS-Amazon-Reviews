@@ -4,6 +4,8 @@ import de.hpi.mmds.database.ReviewRecord;
 import de.hpi.mmds.json.JsonReader;
 import de.hpi.mmds.nlp.BigramThesis;
 import de.hpi.mmds.nlp.Utility;
+import de.hpi.mmds.nlp.template.AdjectiveNounTemplate;
+import de.hpi.mmds.nlp.template.Template;
 import edu.stanford.nlp.ling.TaggedWord;
 import edu.stanford.nlp.ling.Word;
 import org.apache.spark.SparkConf;
@@ -59,8 +61,9 @@ public class Main {
             Word2VecModel model = word2Vec.fit(textRdd);
 
 
+            Template template = new AdjectiveNounTemplate();
             JavaRDD<List<Tuple2<List<TaggedWord>, Integer>>> rddValuesRDD = tagRDD.map(
-                    taggedWords -> BigramThesis.findKGramsEx(3, taggedWords)
+                    taggedWords -> BigramThesis.findKGramsEx(3, taggedWords, template)
             );
 
             JavaPairRDD<List<TaggedWord>, Integer> semiFinalRDD = rddValuesRDD.flatMapToPair(a -> a).reduceByKey(
