@@ -4,6 +4,7 @@ import edu.stanford.nlp.ling.TaggedWord;
 import org.apache.commons.collections4.queue.CircularFifoQueue;
 
 import java.io.Serializable;
+import java.util.Collection;
 
 public abstract class Template implements Serializable {
 
@@ -18,7 +19,7 @@ public abstract class Template implements Serializable {
 
     public abstract MatchResult matches(TaggedWord word, MatchResult previous);
 
-    public abstract String getFeature(CircularFifoQueue<TaggedWord> queue);
+    public abstract String getFeature(Collection<TaggedWord> queue);
 
 
     public static class MatchResult {

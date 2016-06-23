@@ -2,7 +2,8 @@ package de.hpi.mmds.nlp.template;
 
 import de.hpi.mmds.nlp.BigramThesis;
 import edu.stanford.nlp.ling.TaggedWord;
-import org.apache.commons.collections4.queue.CircularFifoQueue;
+
+import java.util.Collection;
 
 public class NounNounTemplate extends Template {
 
@@ -19,7 +20,7 @@ public class NounNounTemplate extends Template {
     }
 
     @Override
-    public String getFeature(CircularFifoQueue<TaggedWord> queue) {
+    public String getFeature(Collection<TaggedWord> queue) {
         return null;
     }
 }
