@@ -14,6 +14,7 @@ import org.apache.spark.mllib.feature.Word2Vec;
 import org.apache.spark.mllib.feature.Word2VecModel;
 import org.apache.spark.mllib.linalg.Vector;
 import scala.Tuple2;
+import scala.Tuple3;
 
 import java.io.File;
 import java.io.Serializable;
@@ -78,45 +79,55 @@ public class Main {
                 return new Tuple2<>(vectors, a._2);
             });
 
-            List<Tuple2<List<VectorWithWords>, Integer>> clusters = vectorRDD.aggregate(
-                    new LinkedList<Tuple2<List<VectorWithWords>, Integer>>(),
-                    (List<Tuple2<List<VectorWithWords>, Integer>> acc, Tuple2<List<VectorWithWords>, Integer> value) -> {
+            List<Tuple3<List<VectorWithWords>, Integer, Set<List<String>>>> clusters = vectorRDD.aggregate(
+                    new LinkedList<>(),
+                    (List<Tuple3<List<VectorWithWords>, Integer, Set<List<String>>>> acc, Tuple2<List<VectorWithWords>, Integer> value) -> {
                         Boolean foundOne = false;
-                        List<Tuple2<List<VectorWithWords>, Integer>> new_acc = new LinkedList<>(acc);
+                        List<Tuple3<List<VectorWithWords>, Integer, Set<List<String>>>> new_acc = new LinkedList<>(acc);
                         //Collections.copy(new_acc, acc);
                         for (int i = 0; i<acc.size(); i++){
-                            Tuple2<List<VectorWithWords>, Integer> l = acc.get(i);
-                            if(compare(value._1, l._1)){
+                            Tuple3<List<VectorWithWords>, Integer, Set<List<String>>> l = acc.get(i);
+                            if(compare(value._1(), l._1())){
                                 new_acc.remove(i);
-                                new_acc.add(new Tuple2<>(l._1, l._2 + value._2));
+                                Set<List<String>> words = new HashSet<List<String>>(l._3());
+                                List<String> w2 = new LinkedList<String>();
+                                value._1().stream().forEach(x -> w2.addAll(x.words));
+                                words.add(w2);
+                                new_acc.add(new Tuple3<>(l._1(), l._2() + value._2(), words));
                                 foundOne = true;
                                 break;
                             }
                         }
                         if (!foundOne){
-                            new_acc.add(value);
+                            Set<List<String>> words = new HashSet<List<String>>();
+                            List<String> w2 = new LinkedList<String>();
+                            value._1().stream().forEach(x -> w2.addAll(x.words));
+                            words.add(w2);
+                            new_acc.add(new Tuple3<>(value._1(), value._2(), words));
                         }
                         return new_acc;
 
                     },
-                    (List<Tuple2<List<VectorWithWords>, Integer>> acc1, List<Tuple2<List<VectorWithWords>, Integer>> acc2) -> {
-                        List<Tuple2<List<VectorWithWords>, Integer>> dotProduct = new LinkedList<>();
-                        List<Tuple2<List<VectorWithWords>, Integer>> result = new LinkedList<>();
+                    (List<Tuple3<List<VectorWithWords>, Integer, Set<List<String>>>> acc1, List<Tuple3<List<VectorWithWords>, Integer, Set<List<String>>>> acc2) -> {
+                        List<Tuple3<List<VectorWithWords>, Integer, Set<List<String>>>> dotProduct = new LinkedList<>();
+                        List<Tuple3<List<VectorWithWords>, Integer, Set<List<String>>>> result = new LinkedList<>();
                         dotProduct.addAll(acc1);
                         dotProduct.addAll(acc2);
                         for (int i = 0; i< dotProduct.size(); i++){
                             Boolean foundOne = false;
-                            Tuple2<List<VectorWithWords>, Integer> l1 = dotProduct.get(i);
+                            Tuple3<List<VectorWithWords>, Integer, Set<List<String>>> l1 = dotProduct.get(i);
                             for (int j = i+1; j< dotProduct.size(); j++){
-                                Tuple2<List<VectorWithWords>, Integer> l2 = dotProduct.get(j);
-                                if(compare(l1._1, l2._1)){
-                                    result.add(new Tuple2<>(l1._1, l1._2+l2._2));
+                                Tuple3<List<VectorWithWords>, Integer, Set<List<String>>> l2 = dotProduct.get(j);
+                                if(compare(l1._1(), l2._1())){
+                                    Set<List<String>> words =  new HashSet<List<String>>(l1._3());
+                                    words.addAll(l2._3());
+                                    result.add(new Tuple3<>(l1._1(), l1._2()+l2._2(), words));
                                     foundOne = true;
                                     break;
                                 }
                             }
                             if (!foundOne){
-                                result.add(new Tuple2<>(l1._1, l1._2));
+                                result.add(new Tuple3<>(l1._1(), l1._2(), l1._3()));
                             }
                         }
                         return result;
@@ -125,6 +136,7 @@ public class Main {
 
 
             clusters.forEach(System.out::println);
+            System.out.println(clusters.size());
 
         }
 
