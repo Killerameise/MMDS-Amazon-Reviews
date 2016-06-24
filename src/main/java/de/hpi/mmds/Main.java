@@ -13,6 +13,7 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.ml.regression.LinearRegressionModel;
 import org.apache.spark.mllib.feature.Word2Vec;
@@ -156,32 +157,49 @@ public class Main {
         });
         System.out.println(clusters.size());
 
+        JavaRDD<Tuple3<List<VectorWithWords>, Integer, Set<List<TaggedWord>>>> clusterRDD = context.parallelize(clusters);
+        clusterRDD.cache();
+        JavaPairRDD<String, Integer> wordsForLinModelRDD = clusterRDD.flatMapToPair((Tuple3<List<VectorWithWords>, Integer, Set<List<TaggedWord>>> cluster) -> {
+            List<Tuple2<String, Integer>> words = new ArrayList<Tuple2<String, Integer>>();
+            cluster._3().forEach((List<TaggedWord> wordList) -> {
+                wordList.forEach((TaggedWord word) -> {
+                    words.add(new Tuple2<String, Integer>(word.word(), 1));
+                });
+            });
+            return words;
+        }).reduceByKey((a,b) -> a+b).filter((Tuple2<String, Integer> tuple) -> tuple._2()>5);
+
+        /*LinkedList<String> features = new LinkedList<>();
+        clusters.stream().forEach((t) -> {
+            List<TaggedWord> representation = t._1().stream().map((s) -> s.words.get(0)).collect(Collectors.toList());
+            features.add(template.getFeature(representation));
+        });*/
+
         Set<String> features1 = new HashSet<>();
+        Set<String> wordsForLinModel = wordsForLinModelRDD.collectAsMap().keySet();
+        String[] wordsForLinModelArray = wordsForLinModel.toArray(new String[wordsForLinModel.size()]);
 
-        Map<List<TaggedWord>, String> featureMap= new HashMap<>();
-        clusters.forEach((cluster) -> {
-                    List<TaggedWord> representation = cluster._1().stream().map((s) -> s.words.get(0)).collect(Collectors.toList());
-                    String feature = template.getFeature(representation);
-                    features1.add(feature);
-                    cluster._3().forEach(listOfTaggedWords ->{
-                        featureMap.put(listOfTaggedWords, feature);
-                    });
 
-                }
-        );
-        List<String> features = new ArrayList<>(features1);
-        Broadcast<List<String>> featureBroadcast = context.broadcast(features);
-        Broadcast<Map<List<TaggedWord>, String>> featureMapBroadcast = context.broadcast(featureMap);
+        //List<String> features = new ArrayList<>(features1);
+        Broadcast<String[]> featureBroadcast = context.broadcast(wordsForLinModelArray);
+        //Broadcast<Map<List<TaggedWord>, String>> featureMapBroadcast = context.broadcast(featureMap);
 
         JavaRDD points = tagRDD.map(rating -> {
-            List<String> fbc = featureBroadcast.getValue();
-            Map<List<TaggedWord>, String> fmp = featureMapBroadcast.getValue();
-            double[] v = new double[fbc.size()];
+            String[] fbc = featureBroadcast.getValue();
+            //Map<List<TaggedWord>, String> fmp = featureMapBroadcast.getValue();
+            double[] v = new double[fbc.length];
             List<Tuple2<List<TaggedWord>, Integer>> output =  BigramThesis.findKGramsEx(3, rating._1, template);
-            output.forEach((Tuple2<List<TaggedWord>, Integer> feature) ->{
-                v[fbc.indexOf(fmp.get(feature._1()))] = feature._2(); //TODO: Index of is ugly and costs time
+            List<String> foundWords = new LinkedList<String>();
+            output.forEach((Tuple2<List<TaggedWord>, Integer> tuple)->{
+                tuple._1().forEach((TaggedWord tword)->{
+                    foundWords.add(tword.word());
+                });
             });
-            return new LabeledPoint((double) (rating._2), Vectors.dense(v));
+            for(int i=0; i< fbc.length; i++){
+                int index = i;
+                v[i] = foundWords.stream().filter((String word1) -> word1.equals(fbc[index])).count();
+            }
+            return new LabeledPoint((double) (rating._2), Vectors.dense(v).toSparse());
         });
 
         DataFrame training = sqlContext.createDataFrame(points, LabeledPoint.class);
@@ -196,14 +214,59 @@ public class Main {
 
         System.out.println("Model 1 was fit using parameters: " + model1.coefficients());
 
-        Map<String, Double> map = new HashMap<>();
+        Map<List<TaggedWord>, String> featureMap= new HashMap<>();
+        clusters.forEach((cluster) -> {
+                    List<TaggedWord> representation = cluster._1().stream().map((s) -> s.words.get(0)).collect(Collectors.toList());
+                    String feature = template.getFeature(representation);
+                    if (wordsForLinModel.contains(feature)) {
+                        features1.add(feature);
+                        cluster._3().forEach(listOfTaggedWords -> {
+                            featureMap.put(listOfTaggedWords, feature);
+                        });
+                    }
+
+                }
+        );
+
+        Map<String, Set<String>> featureToWordsMap = new HashMap<>();
+        for (String feature : featureMap.values()){
+            Set<String> asd = new HashSet<>();
+            featureMap.entrySet().stream().filter((Map.Entry<List<TaggedWord>, String> entry) ->{
+                return entry.getValue().equals(feature);
+            }).forEach((Map.Entry<List<TaggedWord>, String> entry2) ->{
+                Set<String> words = new HashSet<String>();
+                entry2.getKey().forEach((TaggedWord tword) -> {
+                    asd.add(tword.word());
+                });
+            });
+            featureToWordsMap.put(feature, asd);
+        }
         double[] coeffs = model1.coefficients().toArray();
-        for (int i = 0; i < coeffs.length; i++) {
-            int index = i;
-            featureMap.entrySet().stream().filter((Map.Entry<List<TaggedWord>, String> entry) -> (features.indexOf(entry.getValue()) == index))
-                    .forEach((Map.Entry<List<TaggedWord>, String> entry2) -> {
-                        map.put(entry2.getValue(), coeffs[index]);
-                    });
+        Map<String, List<Tuple2<String, Double>>> featureToWordMapWithCoeffs = new HashMap<>();
+        List<String> wordsForLinModelArrayAsList =  Arrays.asList(wordsForLinModelArray);
+        for (Map.Entry<String, Set<String>> entry : featureToWordsMap.entrySet()){
+            List<Tuple2<String, Double>> g = new LinkedList<>();
+            for (String s : entry.getValue()) {
+                Integer index = wordsForLinModelArrayAsList.indexOf(s);
+                if (index >=0){
+                    g.add(new Tuple2<String, Double>(s, coeffs[index]));
+                }
+            }
+            featureToWordMapWithCoeffs.put(entry.getKey(), g);
+
+        }
+        for (Map.Entry<String, List<Tuple2<String, Double>>> entry : featureToWordMapWithCoeffs.entrySet()){
+            System.out.println(entry.getKey());
+            System.out.print("\tmost popular Words: ");
+            entry.getValue().stream().sorted((t1, t2) -> t2._2().compareTo(t1._2())).limit(3).forEach(System.out::print);
+            System.out.println();
+            System.out.print("\tleast popular Words: ");
+            entry.getValue().stream().sorted((t1, t2) -> t1._2().compareTo(t2._2())).limit(3).forEach(System.out::print);
+            System.out.println();
+        }
+
+        /*for (int i = 0; i < coeffs.length; i++) {
+            map.put(wordsForLinModelArray[i], coeffs[i]);
 
         }
 
@@ -224,7 +287,7 @@ public class Main {
             System.out.println(entry);
             j++;
 
-        }
+        }*/
 
     }
 
