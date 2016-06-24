@@ -167,7 +167,7 @@ public class Main {
                 });
             });
             return words;
-        }).reduceByKey((a,b) -> a+b).filter((Tuple2<String, Integer> tuple) -> tuple._2()>5);
+        }).reduceByKey((a,b) -> a+b).filter((Tuple2<String, Integer> tuple) -> tuple._2()>10);
 
         /*LinkedList<String> features = new LinkedList<>();
         clusters.stream().forEach((t) -> {
