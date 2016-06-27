@@ -22,7 +22,7 @@ public class BigramThesis implements Serializable {
         CircularFifoQueue<TaggedWord> queue = new CircularFifoQueue<>(k);
         List<Tuple2<List<TaggedWord>, Integer>> result = new LinkedList<>();
 
-        Template.MatchResult matchResult = new Template.MatchResult(0, false);
+        Template.MatchResult matchResult = new Template.MatchResult(0, false, null, null);
         for (TaggedWord currentWord : text) {
             queue.add(currentWord);
             if (queue.isAtFullCapacity()) {

@@ -4,7 +4,6 @@ import de.hpi.mmds.database.ReviewRecord;
 import de.hpi.mmds.json.JsonReader;
 import de.hpi.mmds.nlp.BigramThesis;
 import de.hpi.mmds.nlp.Utility;
-import de.hpi.mmds.nlp.template.AdjectiveNounTemplate;
 import de.hpi.mmds.nlp.template.NounNounTemplate;
 import de.hpi.mmds.nlp.template.Template;
 import edu.stanford.nlp.ling.TaggedWord;
@@ -25,7 +24,6 @@ import org.apache.spark.sql.SQLContext;
 import scala.Tuple2;
 import scala.Tuple3;
 
-import javax.swing.text.html.HTML;
 import java.io.File;
 import java.io.Serializable;
 import java.util.*;
@@ -93,54 +91,50 @@ public class Main {
             return new Tuple2<>(new Match(vectors, template), a._2);
         });
 
-        List<Tuple3<Match, Integer, Set<List<TaggedWord>>>> clusters = vectorRDD.aggregate(
+        List<MergedVector> clusters = vectorRDD.aggregate(
                 new LinkedList<>(),
-                (List<Tuple3<Match, Integer, Set<List<TaggedWord>>>> acc, Tuple2<Match, Integer> value) -> {
+                (List<MergedVector> acc, Tuple2<Match, Integer> value) -> {
                     Boolean foundOne = false;
-                    List<Tuple3<Match, Integer, Set<List<TaggedWord>>>> new_acc = new LinkedList<>(acc);
+                    List<MergedVector> new_acc = new LinkedList<>(acc);
                     for (int i = 0; i<acc.size(); i++){
-                        Tuple3<Match, Integer, Set<List<TaggedWord>>> l = acc.get(i);
-                        if(compare(value._1().ngram, l._1().ngram)){
+                        MergedVector l = acc.get(i);
+                        if(compare(value._1().vectors, l.vector)){
                             new_acc.remove(i);
-                            Set<List<TaggedWord>> words = new HashSet<>(l._3());
-                            List<TaggedWord> w2 = new LinkedList<>();
-                            value._1().ngram.forEach(x -> w2.add(x.word));
-                            words.add(w2);
-                            new_acc.add(new Tuple3<>(l._1(), l._2() + value._2(), words));
+                            Set<NGramm> words = new HashSet<>(l.ngrams);
+                            words.add(value._1().ngram);
+                            new_acc.add(new MergedVector(l.vector, l.template, words, l.count + value._2()));
                             foundOne = true;
                             break;
                         }
                     }
                     if (!foundOne){
-                        Set<List<TaggedWord>> words = new HashSet<>();
-                        List<TaggedWord> w2 = new LinkedList<>();
-                        value._1().ngram.forEach(x -> w2.add(x.word));
-                        words.add(w2);
-                        new_acc.add(new Tuple3<>(value._1(), value._2(), words));
+                        Set<NGramm> words = new HashSet<>();
+                        words.add(value._1().ngram);
+                        new_acc.add(new MergedVector(value._1().vectors, value._1().template, words, value._2()));
                     }
                     return new_acc;
 
                 },
-                (List<Tuple3<Match, Integer, Set<List<TaggedWord>>>> acc1, List<Tuple3<Match, Integer, Set<List<TaggedWord>>>> acc2) -> {
-                    List<Tuple3<Match, Integer, Set<List<TaggedWord>>>> dotProduct = new LinkedList<>();
-                    List<Tuple3<Match, Integer, Set<List<TaggedWord>>>> result = new LinkedList<>();
+                (List<MergedVector> acc1, List<MergedVector> acc2) -> {
+                    List<MergedVector> dotProduct = new LinkedList<>();
+                    List<MergedVector> result = new LinkedList<>();
                     dotProduct.addAll(acc1);
                     dotProduct.addAll(acc2);
                     for (int i = 0; i< dotProduct.size(); i++){
                         Boolean foundOne = false;
-                        Tuple3<Match, Integer, Set<List<TaggedWord>>> l1 = dotProduct.get(i);
+                        MergedVector l1 = dotProduct.get(i);
                         for (int j = i+1; j< dotProduct.size(); j++){
-                            Tuple3<Match, Integer, Set<List<TaggedWord>>> l2 = dotProduct.get(j);
-                            if(compare(l1._1().ngram, l2._1().ngram)){
-                                Set<List<TaggedWord>> words =  new HashSet<>(l1._3());
-                                words.addAll(l2._3());
-                                result.add(new Tuple3<>(l1._1(), l1._2()+l2._2(), words));
+                            MergedVector l2 = dotProduct.get(j);
+                            if(compare(l1.vector, l2.vector)){
+                                Set<NGramm> words = new HashSet<>(l1.ngrams);
+                                words.addAll(l2.ngrams);
+                                result.add(new MergedVector(l1.vector, l1.template, words, l1.count + l2.count));
                                 foundOne = true;
                                 break;
                             }
                         }
                         if (!foundOne){
-                            result.add(new Tuple3<>(l1._1(), l1._2(), l1._3()));
+                            result.add(new MergedVector(l1.vector, l1.template, l1.ngrams, l1.count));
                         }
                     }
                     return result;
@@ -148,7 +142,7 @@ public class Main {
         );
 
 
-        clusters.sort((a, b) -> b._2() - a._2());
+        clusters.sort((a, b) -> b.count - a.count);
         /*clusters.stream().limit(25).forEach((t) -> {
             List<TaggedWord> representation = t._1().stream().map((s) -> s.words.get(0)).collect(Collectors.toList());
             System.out.println(representation.toString() + ": " + t._2().toString() + " | " + t._3().toString());
@@ -157,13 +151,14 @@ public class Main {
         System.out.println(clusters.size());
 
         Set<String> features1 = new HashSet<>();
+        Set<String> descriptions = new HashSet<>();
 
         Map<List<TaggedWord>, String> featureMap= new HashMap<>();
-        clusters.subList(0,25).forEach((cluster) -> {
-                    String feature = cluster._1().representative;
+        clusters.subList(0,25).forEach((MergedVector cluster) -> {
+                    String feature = cluster.feature;
                     features1.add(feature);
-                    cluster._3().forEach(listOfTaggedWords ->{
-                        featureMap.put(listOfTaggedWords, feature);
+                    cluster.ngrams.forEach((NGramm listOfTaggedWords)->{
+                        featureMap.put(listOfTaggedWords.taggedWords, feature);
                     });
 
                 }
@@ -298,16 +293,54 @@ public class Main {
     }
 
     public static class Match implements Serializable{
-        public List<VectorWithWords> ngram;
+        public List<VectorWithWords> vectors;
+        public NGramm ngram;
         public Template template;
         public String representative;
 
         public Match(final List<VectorWithWords> vlist, final Template template){
-            this.ngram = vlist;
+            this.vectors = vlist;
             this.template= template;
             List<TaggedWord> words = new LinkedList<>();
-            this.ngram.forEach(a-> words.add(a.word));
+            this.vectors.forEach(a -> words.add(a.word));
+            this.ngram = new NGramm(words, template);
             this.representative = template.getFeature(words);
+        }
+    }
+
+    public static class MergedVector implements Serializable{
+        public List<VectorWithWords> vector;
+        public Template template;
+        public String feature;
+        public Set<String> descriptions;
+        public Set<NGramm> ngrams;
+        public Integer count;
+
+        public MergedVector(final List<VectorWithWords> vector,
+                             final Template template,
+                             final Set<NGramm> ngrams,
+                             final Integer count){
+            this.vector = vector;
+            this.template = template;
+            this.ngrams = ngrams;
+            this.count = count;
+            List<TaggedWord> words = new LinkedList<>();
+            this.vector.forEach(a -> words.add(a.word));
+            this.feature = template.getFeature(words);
+            this.descriptions = new HashSet<>();
+            for (NGramm ngram : this.ngrams) {
+                this.descriptions.add(ngram.template.getDescription(ngram.taggedWords));
+            }
+        }
+    }
+
+    public static class NGramm implements Serializable{
+        public List<TaggedWord> taggedWords;
+        public Template template;
+
+        public NGramm(List<TaggedWord> twords, Template template){
+            this.taggedWords = twords;
+            this.template = template;
         }
     }
 }
