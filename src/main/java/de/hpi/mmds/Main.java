@@ -4,6 +4,7 @@ import de.hpi.mmds.database.ReviewRecord;
 import de.hpi.mmds.json.JsonReader;
 import de.hpi.mmds.nlp.BigramThesis;
 import de.hpi.mmds.nlp.Utility;
+import de.hpi.mmds.nlp.template.AdjectiveNounTemplate;
 import de.hpi.mmds.nlp.template.NounNounTemplate;
 import de.hpi.mmds.nlp.template.Template;
 import edu.stanford.nlp.ling.TaggedWord;
@@ -24,6 +25,7 @@ import org.apache.spark.sql.SQLContext;
 import scala.Tuple2;
 import scala.Tuple3;
 
+import javax.swing.text.html.HTML;
 import java.io.File;
 import java.io.Serializable;
 import java.util.*;
@@ -70,7 +72,7 @@ public class Main {
         Word2VecModel model = word2Vec.fit(textRdd);
 
 
-        Template template = new NounNounTemplate();
+        Template template = new AdjectiveNounTemplate();
         JavaRDD<List<Tuple2<List<TaggedWord>, Integer>>> rddValuesRDD = tagRDD.map(
                 taggedWords -> BigramThesis.findKGramsEx(3, taggedWords._1(), template)
         );
@@ -151,31 +153,31 @@ public class Main {
         System.out.println(clusters.size());
 
         Set<String> features1 = new HashSet<>();
-        Set<String> descriptions = new HashSet<>();
+        Set<String> descriptions1 = new HashSet<>();
+        Map<List<TaggedWord>, String> featureMap = new HashMap<>();
 
-        Map<List<TaggedWord>, String> featureMap= new HashMap<>();
         clusters.subList(0,25).forEach((MergedVector cluster) -> {
                     String feature = cluster.feature;
                     features1.add(feature);
+                    descriptions1.addAll(cluster.descriptions);
                     cluster.ngrams.forEach((NGramm listOfTaggedWords)->{
                         featureMap.put(listOfTaggedWords.taggedWords, feature);
                     });
 
                 }
         );
-        List<String> features = new ArrayList<>(features1);
-        Broadcast<List<String>> featureBroadcast = context.broadcast(features);
-        Broadcast<Map<List<TaggedWord>, String>> featureMapBroadcast = context.broadcast(featureMap);
+        List<String> descriptions = new ArrayList<>(descriptions1);
+        Broadcast<List<String>> descriptionBroadcast = context.broadcast(descriptions);
+        //Broadcast<Map<List<TaggedWord>, String>> descriptionMapBroadcast = context.broadcast(featureMap);
 
-        JavaRDD points = tagRDD.map(rating -> {
-            List<String> fbc = featureBroadcast.getValue();
-            Map<List<TaggedWord>, String> fmp = featureMapBroadcast.getValue();
+        JavaRDD points = tagRDD.map((Tuple2<List<TaggedWord>, Float> rating) -> {
+            List<String> fbc = descriptionBroadcast.getValue();
+            //Map<List<TaggedWord>, String> fmp = descriptionMapBroadcast.getValue();
             double[] v = new double[fbc.size()];
-            List<Tuple2<List<TaggedWord>, Integer>> output =  BigramThesis.findKGramsEx(3, rating._1, template);
-            output.forEach((Tuple2<List<TaggedWord>, Integer> feature) ->{
-                if (fmp.containsKey(feature._1())){
-                    v[fbc.indexOf(fmp.get(feature._1()))] = feature._2(); //TODO: Index of is ugly and costs time
-                }
+            //List<Tuple2<List<TaggedWord>, Integer>> output =  BigramThesis.findKGramsEx(3, rating._1, template);
+            List<TaggedWord> output = rating._1().stream().filter((TaggedWord tw) -> (fbc.contains(tw.word()))).collect(Collectors.toList());
+            output.forEach((TaggedWord feature) -> {
+                v[fbc.indexOf(feature.word())] = 1; //TODO: Index of is ugly and costs time
             });
             return new LabeledPoint((double) (rating._2), Vectors.dense(v));
         });
@@ -185,7 +187,7 @@ public class Main {
 
         org.apache.spark.ml.regression.LinearRegression lr = new org.apache.spark.ml.regression.LinearRegression();
 
-        lr.setMaxIter(10)
+        lr.setMaxIter(20)
                 .setRegParam(0.01);
 
         LinearRegressionModel model1 = lr.train(training);
@@ -196,15 +198,31 @@ public class Main {
         double[] coeffs = model1.coefficients().toArray();
         for (int i = 0; i < coeffs.length; i++) {
             int index = i;
-            featureMap.entrySet().stream().filter((Map.Entry<List<TaggedWord>, String> entry) -> (features.indexOf(entry.getValue()) == index))
+            map.put(descriptions.get(i), coeffs[i]);
+            /*featureMap.entrySet().stream().filter((Map.Entry<List<TaggedWord>, String> entry) -> (features.indexOf(entry.getValue()) == index))
                     .forEach((Map.Entry<List<TaggedWord>, String> entry2) -> {
                         map.put(entry2.getValue(), coeffs[index]);
-                    });
+                    });*/ // a beauty of its own quality
 
         }
 
         Iterator<Map.Entry<String, Double>> i = Utility.valueIterator(map);
-        System.out.println("Positive Words");
+        for (String feature : featureMap.values()){
+            Map<String, Double> scores = new HashMap<>();
+            for(Map.Entry<List<TaggedWord>, String> entry: featureMap.entrySet()){
+                if (entry.getValue().equals(feature)){
+                    for (TaggedWord word : entry.getKey()){
+                        if (map.containsKey(word.word())) scores.put(word.word(), map.get(word.word()));
+                    }
+                }
+            }
+            System.out.println(feature + ": ");
+            System.out.println(scores);
+        }
+
+
+
+        /*System.out.println("Positive Words");
         int j = 0;
         while (j < 50 && i.hasNext()) {
             Map.Entry<String, Double> entry = i.next();
@@ -220,7 +238,7 @@ public class Main {
             System.out.println(entry);
             j++;
 
-        }
+        }*/
 
     }
 

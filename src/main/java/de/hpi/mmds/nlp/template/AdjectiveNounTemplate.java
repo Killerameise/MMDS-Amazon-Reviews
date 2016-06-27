@@ -11,7 +11,7 @@ public class AdjectiveNounTemplate extends Template {
 
     @Override
     public MatchResult matches(TaggedWord word, MatchResult previous) {
-        if (previous.state == 0 && word.tag().equals("JJR")) {
+        if (previous.state == 0 && BigramThesis.adjectiveTags.contains(word.tag())) {
             return new MatchResult(1, false, null, word);
         } else if (previous.state == 1 && BigramThesis.nounTags.contains(word.tag())) {
             return new MatchResult(1, true, word, previous.description);
@@ -26,7 +26,7 @@ public class AdjectiveNounTemplate extends Template {
         for (TaggedWord taggedWord : queue) {
             matchResult = matches(taggedWord, matchResult);
             if (matchResult.accepts) {
-                return matchResult.description.word();
+                return matchResult.feature.word();
             }
         }
         return null;
@@ -38,7 +38,7 @@ public class AdjectiveNounTemplate extends Template {
         for (TaggedWord taggedWord : queue) {
             matchResult = matches(taggedWord, matchResult);
             if (matchResult.accepts) {
-                return matchResult.feature.word();
+                return matchResult.description.word();
             }
         }
         return null;
