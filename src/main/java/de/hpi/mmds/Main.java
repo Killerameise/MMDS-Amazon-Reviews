@@ -143,7 +143,6 @@ public class Main {
                 }
         );
 
-
         clusters.sort((a, b) -> b.count - a.count);
         /*clusters.stream().limit(25).forEach((t) -> {
             List<TaggedWord> representation = t._1().stream().map((s) -> s.words.get(0)).collect(Collectors.toList());
