@@ -89,16 +89,16 @@ public class Main {
             return new Tuple2<>(new Match(vectors, template), a._2);
         });
 
-        vectorRDD.repartition(context.defaultParallelism());
+        JavaPairRDD<Match, Integer> repartitionedVectorRDD = vectorRDD.repartition(context.defaultParallelism());
 
-        List<MergedVector> clusters = vectorRDD.aggregate(
+        List<MergedVector> clusters = repartitionedVectorRDD.aggregate(
                 new LinkedList<>(),
                 (List<MergedVector> acc, Tuple2<Match, Integer> value) -> {
                     Boolean foundOne = false;
                     List<MergedVector> new_acc = new LinkedList<>(acc);
                     for (int i = 0; i<acc.size(); i++){
                         MergedVector l = acc.get(i);
-                        if(compare(value._1().vectors, l.vector)){
+                        if(compare(value._1(), l)){
                             new_acc.remove(i);
                             Set<NGramm> words = new HashSet<>(l.ngrams);
                             words.add(value._1().ngram);
@@ -125,7 +125,7 @@ public class Main {
                         MergedVector l1 = dotProduct.get(i);
                         for (int j = i+1; j< dotProduct.size(); j++){
                             MergedVector l2 = dotProduct.get(j);
-                            if(compare(l1.vector, l2.vector)){
+                            if(compare(l1, l2)){
                                 Set<NGramm> words = new HashSet<>(l1.ngrams);
                                 words.addAll(l2.ngrams);
                                 result.add(new MergedVector(l1.vector, l1.template, words, l1.count + l2.count));
@@ -272,13 +272,29 @@ public class Main {
         return cosineSimilarity;
     }
 
-    public static boolean compare(List<VectorWithWords> listVec1, List<VectorWithWords> listVec2) {
+    public static boolean compare(TemplateBased t1, TemplateBased t2) {
         double threshold = 0.9;
-        double sum = 0;
-        for (int i = 0; i < listVec1.size(); i++) {
-            sum += cosineSimilarity(listVec1.get(i).vector.toArray(), listVec2.get(i).vector.toArray());
+
+        double[] v1 = null;
+        String s1 = t1.getTemplate().getFeature(t1.getNGramm().taggedWords);
+        for (VectorWithWords v : t1.getVectors()) {
+            if (v.word.word().equals(s1)) {
+                v1 = v.vector.toArray();
+            }
         }
-        return threshold < (sum / listVec1.size());
+
+        double[] v2 = null;
+        String s2 = t2.getTemplate().getFeature(t2.getNGramm().taggedWords);
+        for (VectorWithWords v : t2.getVectors()) {
+            if (v.word.word().equals(s2)) {
+                v2 = v.vector.toArray();
+            }
+        }
+
+        if (v1 == null || v2 == null) {
+            return false;
+        }
+        return threshold < cosineSimilarity(v1, v2);
     }
 
     public static <T> T mostCommon(List<T> list) {
@@ -316,7 +332,13 @@ public class Main {
         }
     }
 
-    public static class Match implements Serializable{
+    interface TemplateBased {
+        Template getTemplate();
+        NGramm getNGramm();
+        List<VectorWithWords> getVectors();
+    }
+
+    public static class Match implements Serializable, TemplateBased {
         public List<VectorWithWords> vectors;
         public NGramm ngram;
         public Template template;
@@ -330,14 +352,30 @@ public class Main {
             this.ngram = new NGramm(words, template);
             this.representative = template.getFeature(words);
         }
+
+        @Override
+        public Template getTemplate() {
+            return template;
+        }
+
+        @Override
+        public NGramm getNGramm() {
+            return ngram;
+        }
+
+        @Override
+        public List<VectorWithWords> getVectors() {
+            return vectors;
+        }
     }
 
-    public static class MergedVector implements Serializable{
+    public static class MergedVector implements Serializable, TemplateBased {
         public List<VectorWithWords> vector;
         public Template template;
         public String feature;
         public Set<String> descriptions;
         public Set<NGramm> ngrams;
+        public NGramm representative;
         public Integer count;
 
         public MergedVector(final List<VectorWithWords> vector,
@@ -355,6 +393,22 @@ public class Main {
             for (NGramm ngram : this.ngrams) {
                 this.descriptions.add(ngram.template.getDescription(ngram.taggedWords));
             }
+            this.representative = this.ngrams.iterator().next();
+        }
+
+        @Override
+        public Template getTemplate() {
+            return template;
+        }
+
+        @Override
+        public NGramm getNGramm() {
+            return representative;
+        }
+
+        @Override
+        public List<VectorWithWords> getVectors() {
+            return vector;
         }
     }
 
