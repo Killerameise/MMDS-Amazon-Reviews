@@ -68,7 +68,8 @@ public class Main {
         // Learn a mapping from words to Vectors.
         Word2Vec word2Vec = new Word2Vec()
                 .setVectorSize(150)
-                .setMinCount(0);
+                .setMinCount(0)
+                .setNumPartitions(context.defaultParallelism());
         Word2VecModel model = word2Vec.fit(textRdd);
 
 
