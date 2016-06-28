@@ -81,18 +81,15 @@ public class Main {
         JavaPairRDD<List<TaggedWord>, Integer> semiFinalRDD = rddValuesRDD.flatMapToPair(a -> a).reduceByKey(
                 (a, b) -> a + b);
 
-        JavaPairRDD<Integer, List<TaggedWord>> swappedFinalRDD = semiFinalRDD.mapToPair(Tuple2::swap).sortByKey(
-                false);
-
-        JavaPairRDD<List<TaggedWord>, Integer> finalRDD = swappedFinalRDD.mapToPair(Tuple2::swap);
-
-        JavaPairRDD<Match, Integer> vectorRDD = finalRDD.mapToPair(a -> {
+        JavaPairRDD<Match, Integer> vectorRDD = semiFinalRDD.mapToPair(a -> {
             List<VectorWithWords> vectors = a._1().stream().map(
                     (TaggedWord taggedWord) ->
                         new VectorWithWords(model.transform(taggedWord.word()), taggedWord))
                     .collect(Collectors.toList());
             return new Tuple2<>(new Match(vectors, template), a._2);
         });
+
+        vectorRDD.repartition(context.defaultParallelism());
 
         List<MergedVector> clusters = vectorRDD.aggregate(
                 new LinkedList<>(),
@@ -144,19 +141,28 @@ public class Main {
                 }
         );
 
-        clusters.sort((a, b) -> b.count - a.count);
+        System.out.println(clusters.size());
+
+        JavaRDD<MergedVector> mergedVectorRDD = context.parallelize(clusters);
+        JavaPairRDD<MergedVector, Integer> unsortedClustersRDD = mergedVectorRDD.mapToPair(
+                (t) -> new Tuple2<>(t, t.count));
+
+        JavaPairRDD<MergedVector, Integer> sortedClustersRDD = unsortedClustersRDD.mapToPair(Tuple2::swap)
+                .sortByKey(false).mapToPair(Tuple2::swap);
+
+        JavaRDD<MergedVector> finalClusterRDD = sortedClustersRDD.map(Tuple2::_1);
+
         /*clusters.stream().limit(25).forEach((t) -> {
             List<TaggedWord> representation = t._1().stream().map((s) -> s.words.get(0)).collect(Collectors.toList());
             System.out.println(representation.toString() + ": " + t._2().toString() + " | " + t._3().toString());
             System.out.println("Feature: " + template.getFeature(representation));
         });*/
-        System.out.println(clusters.size());
 
         Set<String> features1 = new HashSet<>();
         Set<String> descriptions1 = new HashSet<>();
         Map<List<TaggedWord>, String> featureMap = new HashMap<>();
 
-        clusters.subList(0,25).forEach((MergedVector cluster) -> {
+        finalClusterRDD.take(25).forEach((MergedVector cluster) -> {
                     String feature = cluster.feature;
                     features1.add(feature);
                     descriptions1.addAll(cluster.descriptions);
