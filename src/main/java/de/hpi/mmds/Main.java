@@ -150,7 +150,7 @@ public class Main {
 
         JavaRDD<MergedVector> finalClusterRDD = sortedClustersRDD.map(Tuple2::_1);
 
-        clusters.stream().limit(25).forEach((t) -> {
+        finalClusterRDD.take(25).forEach((t) -> {
             List<TaggedWord> representation = t.getNGramm().taggedWords;
             System.out.println(representation.toString() + ": " + t.count.toString() + " | " + t.ngrams.stream()
                     .map(n -> n.taggedWords.stream().map(tw -> tw.word()).collect(Collectors.joining(", ")))
