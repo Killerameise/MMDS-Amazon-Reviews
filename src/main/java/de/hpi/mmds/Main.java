@@ -31,25 +31,26 @@ import java.util.stream.Collectors;
 
 public class Main {
     private static String reviewPath = "resources/reviews";
+    private static int CPUS = 8;
 
     public static void main(String args[]) {
 
-
         SparkConf conf = new SparkConf();
-        conf.setIfMissing("spark.master", "local[8]");
+        conf.setIfMissing("spark.master", "local[" + CPUS + "]");
         conf.setAppName("mmds-amazon");
         JavaSparkContext context = new JavaSparkContext(conf);
         SQLContext sqlContext = new SQLContext(context);
 
-        if (args.length == 1) {
+        if (args.length == 2) {
             reviewPath = args[0];
+            CPUS = new Integer(args[1]);
         } else {
             File folder = new File(reviewPath);
             File[] reviewFiles = folder.listFiles((dir, name) -> name.endsWith(".json"));
             reviewPath = reviewFiles[0].getAbsolutePath();
         }
 
-        JavaRDD<String> fileRDD = context.textFile(reviewPath);
+        JavaRDD<String> fileRDD = context.textFile(reviewPath, CPUS);
 
         JavaRDD<ReviewRecord> recordsRDD = fileRDD.map(JsonReader::readReviewJson);
 
@@ -66,7 +67,7 @@ public class Main {
         Word2Vec word2Vec = new Word2Vec()
                 .setVectorSize(50)
                 .setMinCount(0)
-                .setNumPartitions(context.defaultParallelism());
+                .setNumPartitions(CPUS);
         Word2VecModel model = word2Vec.fit(textRdd);
 
 
@@ -86,9 +87,9 @@ public class Main {
             return new Tuple2<>(new Match(vectors, template), a._2);
         });
 
-        JavaPairRDD<Match, Integer> repartitionedVectorRDD = vectorRDD.repartition(context.defaultParallelism());
+        JavaPairRDD<Match, Integer> repartitionedVectorRDD = vectorRDD.repartition(CPUS);
 
-        List<MergedVector> clusters = repartitionedVectorRDD.aggregate(
+        List<MergedVector> clusters = repartitionedVectorRDD.treeAggregate(
                 new LinkedList<>(),
                 (List<MergedVector> acc, Tuple2<Match, Integer> value) -> {
                     Boolean foundOne = false;
@@ -140,7 +141,7 @@ public class Main {
 
         System.out.println(clusters.size());
 
-        JavaRDD<MergedVector> mergedVectorRDD = context.parallelize(clusters);
+        JavaRDD<MergedVector> mergedVectorRDD = context.parallelize(clusters, CPUS);
         JavaPairRDD<MergedVector, Integer> unsortedClustersRDD = mergedVectorRDD.mapToPair(
                 (t) -> new Tuple2<>(t, t.count));
 
@@ -149,11 +150,13 @@ public class Main {
 
         JavaRDD<MergedVector> finalClusterRDD = sortedClustersRDD.map(Tuple2::_1);
 
-        /*clusters.stream().limit(25).forEach((t) -> {
-            List<TaggedWord> representation = t._1().stream().map((s) -> s.words.get(0)).collect(Collectors.toList());
-            System.out.println(representation.toString() + ": " + t._2().toString() + " | " + t._3().toString());
+        clusters.stream().limit(25).forEach((t) -> {
+            List<TaggedWord> representation = t.getNGramm().taggedWords;
+            System.out.println(representation.toString() + ": " + t.count.toString() + " | " + t.ngrams.stream()
+                    .map(n -> n.taggedWords.stream().map(tw -> tw.word()).collect(Collectors.joining(", ")))
+                    .collect(Collectors.joining(" + ")));
             System.out.println("Feature: " + template.getFeature(representation));
-        });*/
+        });
 
         Set<String> features1 = new HashSet<>();
         Set<String> descriptions1 = new HashSet<>();
