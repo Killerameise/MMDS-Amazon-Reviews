@@ -5,7 +5,6 @@ import de.hpi.mmds.json.JsonReader;
 import de.hpi.mmds.nlp.BigramThesis;
 import de.hpi.mmds.nlp.Utility;
 import de.hpi.mmds.nlp.template.AdjectiveNounTemplate;
-import de.hpi.mmds.nlp.template.NounNounTemplate;
 import de.hpi.mmds.nlp.template.Template;
 import edu.stanford.nlp.ling.TaggedWord;
 import edu.stanford.nlp.ling.Word;
@@ -23,9 +22,7 @@ import org.apache.spark.mllib.regression.LabeledPoint;
 import org.apache.spark.sql.DataFrame;
 import org.apache.spark.sql.SQLContext;
 import scala.Tuple2;
-import scala.Tuple3;
 
-import javax.swing.text.html.HTML;
 import java.io.File;
 import java.io.Serializable;
 import java.util.*;
@@ -67,7 +64,7 @@ public class Main {
 
         // Learn a mapping from words to Vectors.
         Word2Vec word2Vec = new Word2Vec()
-                .setVectorSize(150)
+                .setVectorSize(50)
                 .setMinCount(0)
                 .setNumPartitions(context.defaultParallelism());
         Word2VecModel model = word2Vec.fit(textRdd);
@@ -84,7 +81,7 @@ public class Main {
         JavaPairRDD<Match, Integer> vectorRDD = semiFinalRDD.mapToPair(a -> {
             List<VectorWithWords> vectors = a._1().stream().map(
                     (TaggedWord taggedWord) ->
-                        new VectorWithWords(model.transform(taggedWord.word()), taggedWord))
+                            new VectorWithWords(model.transform(taggedWord.word()), taggedWord))
                     .collect(Collectors.toList());
             return new Tuple2<>(new Match(vectors, template), a._2);
         });
@@ -96,9 +93,9 @@ public class Main {
                 (List<MergedVector> acc, Tuple2<Match, Integer> value) -> {
                     Boolean foundOne = false;
                     List<MergedVector> new_acc = new LinkedList<>(acc);
-                    for (int i = 0; i<acc.size(); i++){
+                    for (int i = 0; i < acc.size(); i++) {
                         MergedVector l = acc.get(i);
-                        if(compare(value._1(), l)){
+                        if (compare(value._1(), l)) {
                             new_acc.remove(i);
                             Set<NGramm> words = new HashSet<>(l.ngrams);
                             words.add(value._1().ngram);
@@ -107,7 +104,7 @@ public class Main {
                             break;
                         }
                     }
-                    if (!foundOne){
+                    if (!foundOne) {
                         Set<NGramm> words = new HashSet<>();
                         words.add(value._1().ngram);
                         new_acc.add(new MergedVector(value._1().vectors, value._1().template, words, value._2()));
@@ -120,12 +117,12 @@ public class Main {
                     List<MergedVector> result = new LinkedList<>();
                     dotProduct.addAll(acc1);
                     dotProduct.addAll(acc2);
-                    for (int i = 0; i< dotProduct.size(); i++){
+                    for (int i = 0; i < dotProduct.size(); i++) {
                         Boolean foundOne = false;
                         MergedVector l1 = dotProduct.get(i);
-                        for (int j = i+1; j< dotProduct.size(); j++){
+                        for (int j = i + 1; j < dotProduct.size(); j++) {
                             MergedVector l2 = dotProduct.get(j);
-                            if(compare(l1, l2)){
+                            if (compare(l1, l2)) {
                                 Set<NGramm> words = new HashSet<>(l1.ngrams);
                                 words.addAll(l2.ngrams);
                                 result.add(new MergedVector(l1.vector, l1.template, words, l1.count + l2.count));
@@ -133,7 +130,7 @@ public class Main {
                                 break;
                             }
                         }
-                        if (!foundOne){
+                        if (!foundOne) {
                             result.add(new MergedVector(l1.vector, l1.template, l1.ngrams, l1.count));
                         }
                     }
@@ -163,14 +160,14 @@ public class Main {
         Map<List<TaggedWord>, String> featureMap = new HashMap<>();
 
         finalClusterRDD.take(25).forEach((MergedVector cluster) -> {
-                    String feature = cluster.feature;
-                    features1.add(feature);
-                    descriptions1.addAll(cluster.descriptions);
-                    cluster.ngrams.forEach((NGramm listOfTaggedWords)->{
-                        featureMap.put(listOfTaggedWords.taggedWords, feature);
-                    });
+                                             String feature = cluster.feature;
+                                             features1.add(feature);
+                                             descriptions1.addAll(cluster.descriptions);
+                                             cluster.ngrams.forEach((NGramm listOfTaggedWords) -> {
+                                                 featureMap.put(listOfTaggedWords.taggedWords, feature);
+                                             });
 
-                }
+                                         }
         );
         List<String> descriptions = new ArrayList<>(descriptions1);
         Broadcast<List<String>> descriptionBroadcast = context.broadcast(descriptions);
@@ -181,7 +178,8 @@ public class Main {
             //Map<List<TaggedWord>, String> fmp = descriptionMapBroadcast.getValue();
             double[] v = new double[fbc.size()];
             //List<Tuple2<List<TaggedWord>, Integer>> output =  BigramThesis.findKGramsEx(3, rating._1, template);
-            List<TaggedWord> output = rating._1().stream().filter((TaggedWord tw) -> (fbc.contains(tw.word()))).collect(Collectors.toList());
+            List<TaggedWord> output = rating._1().stream().filter((TaggedWord tw) -> (fbc.contains(tw.word()))).collect(
+                    Collectors.toList());
             output.forEach((TaggedWord feature) -> {
                 v[fbc.indexOf(feature.word())] = 1; //TODO: Index of is ugly and costs time
             });
@@ -213,12 +211,14 @@ public class Main {
         }
 
         Iterator<Map.Entry<String, Double>> i = Utility.valueIterator(map);
-        for (String feature : featureMap.values()){
+        for (String feature : featureMap.values()) {
             Map<String, Double> scores = new HashMap<>();
-            for(Map.Entry<List<TaggedWord>, String> entry: featureMap.entrySet()){
-                if (entry.getValue().equals(feature)){
-                    for (TaggedWord word : entry.getKey()){
-                        if (map.containsKey(word.word())) scores.put(word.word(), map.get(word.word()));
+            for (Map.Entry<List<TaggedWord>, String> entry : featureMap.entrySet()) {
+                if (entry.getValue().equals(feature)) {
+                    for (TaggedWord word : entry.getKey()) {
+                        if (map.containsKey(word.word())) {
+                            scores.put(word.word(), map.get(word.word()));
+                        }
                     }
                 }
             }
@@ -308,8 +308,9 @@ public class Main {
         Map.Entry<T, Integer> max = null;
 
         for (Map.Entry<T, Integer> e : map.entrySet()) {
-            if (max == null || e.getValue() > max.getValue())
+            if (max == null || e.getValue() > max.getValue()) {
                 max = e;
+            }
         }
 
         return max.getKey();
@@ -317,7 +318,7 @@ public class Main {
 
     public static class VectorWithWords implements Serializable {
         public TaggedWord word;
-        public Vector vector;
+        public Vector     vector;
 
         public VectorWithWords(final Vector vector, final TaggedWord words) {
             this.word = words;
@@ -327,26 +328,28 @@ public class Main {
         @Override
         public String toString() {
             return "VectorWithWords{" +
-                    ", vector=" + vector +
-                    '}';
+                   ", vector=" + vector +
+                   '}';
         }
     }
 
     interface TemplateBased {
         Template getTemplate();
+
         NGramm getNGramm();
+
         List<VectorWithWords> getVectors();
     }
 
     public static class Match implements Serializable, TemplateBased {
         public List<VectorWithWords> vectors;
-        public NGramm ngram;
-        public Template template;
-        public String representative;
+        public NGramm                ngram;
+        public Template              template;
+        public String                representative;
 
-        public Match(final List<VectorWithWords> vlist, final Template template){
+        public Match(final List<VectorWithWords> vlist, final Template template) {
             this.vectors = vlist;
-            this.template= template;
+            this.template = template;
             List<TaggedWord> words = new LinkedList<>();
             this.vectors.forEach(a -> words.add(a.word));
             this.ngram = new NGramm(words, template);
@@ -371,17 +374,17 @@ public class Main {
 
     public static class MergedVector implements Serializable, TemplateBased {
         public List<VectorWithWords> vector;
-        public Template template;
-        public String feature;
-        public Set<String> descriptions;
-        public Set<NGramm> ngrams;
-        public NGramm representative;
-        public Integer count;
+        public Template              template;
+        public String                feature;
+        public Set<String>           descriptions;
+        public Set<NGramm>           ngrams;
+        public NGramm                representative;
+        public Integer               count;
 
         public MergedVector(final List<VectorWithWords> vector,
-                             final Template template,
-                             final Set<NGramm> ngrams,
-                             final Integer count){
+                            final Template template,
+                            final Set<NGramm> ngrams,
+                            final Integer count) {
             this.vector = vector;
             this.template = template;
             this.ngrams = ngrams;
@@ -412,11 +415,11 @@ public class Main {
         }
     }
 
-    public static class NGramm implements Serializable{
+    public static class NGramm implements Serializable {
         public List<TaggedWord> taggedWords;
-        public Template template;
+        public Template         template;
 
-        public NGramm(List<TaggedWord> twords, Template template){
+        public NGramm(List<TaggedWord> twords, Template template) {
             this.taggedWords = twords;
             this.template = template;
         }
