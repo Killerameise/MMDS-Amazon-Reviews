@@ -11,11 +11,12 @@ public class AdjectiveNounTemplate extends Template {
 
     @Override
     public MatchResult matches(TaggedWord word, MatchResult previous) {
-        if (previous.state == 0 && BigramThesis.adjectiveTags.contains(word.tag())) {
+        if (BigramThesis.adjectiveTags.contains(word.tag())) {
             return new MatchResult(1, false, null, word);
         } else if (previous.state == 1 && BigramThesis.nounTags.contains(word.tag())) {
             return new MatchResult(1, true, word, previous.description);
-        } else {
+        }
+        else {
             return new MatchResult(0, false, null, null);
         }
     }

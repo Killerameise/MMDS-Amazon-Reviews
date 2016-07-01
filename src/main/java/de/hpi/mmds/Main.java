@@ -51,7 +51,6 @@ public class Main {
             File[] reviewFiles = folder.listFiles((dir, name) -> name.endsWith(".json"));
             reviewPath = reviewFiles[0].getAbsolutePath();
         }
-
         JavaRDD<String> fileRDD = context.textFile(reviewPath);
 
         JavaRDD<ReviewRecord> recordsRDD = fileRDD.map(JsonReader::readReviewJson);
@@ -75,17 +74,17 @@ public class Main {
         Template template = new AdjectiveNounTemplate();
         JavaRDD<List<Tuple2<List<TaggedWord>, Integer>>> rddValuesRDD = tagRDD.map(
                 taggedWords -> BigramThesis.findKGramsEx(3, taggedWords._1(), template)
-        );
+        ); //TODO: carry on review id and review score for use by linear model
 
         JavaPairRDD<List<TaggedWord>, Integer> semiFinalRDD = rddValuesRDD.flatMapToPair(a -> a).reduceByKey(
                 (a, b) -> a + b);
 
-        JavaPairRDD<Integer, List<TaggedWord>> swappedFinalRDD = semiFinalRDD.mapToPair(Tuple2::swap).sortByKey(
+        /*JavaPairRDD<Integer, List<TaggedWord>> swappedFinalRDD = semiFinalRDD.mapToPair(Tuple2::swap).sortByKey(
                 false);
 
         JavaPairRDD<List<TaggedWord>, Integer> finalRDD = swappedFinalRDD.mapToPair(Tuple2::swap);
-
-        JavaPairRDD<Match, Integer> vectorRDD = finalRDD.mapToPair(a -> {
+*/
+        JavaPairRDD<Match, Integer> vectorRDD = semiFinalRDD.mapToPair(a -> {
             List<VectorWithWords> vectors = a._1().stream().map(
                     (TaggedWord taggedWord) ->
                         new VectorWithWords(model.transform(taggedWord.word()), taggedWord))
@@ -100,7 +99,7 @@ public class Main {
                     List<MergedVector> new_acc = new LinkedList<>(acc);
                     for (int i = 0; i<acc.size(); i++){
                         MergedVector l = acc.get(i);
-                        if(compare(value._1().vectors, l.vector)){
+                        if(l.feature.equals(value._1().representative) ||compare(value._1().vectors, l.vector)){
                             new_acc.remove(i);
                             Set<NGramm> words = new HashSet<>(l.ngrams);
                             words.add(value._1().ngram);
@@ -127,7 +126,7 @@ public class Main {
                         MergedVector l1 = dotProduct.get(i);
                         for (int j = i+1; j< dotProduct.size(); j++){
                             MergedVector l2 = dotProduct.get(j);
-                            if(compare(l1.vector, l2.vector)){
+                            if(l1.feature.equals(l2.feature) || compare(l1.vector, l2.vector)){
                                 Set<NGramm> words = new HashSet<>(l1.ngrams);
                                 words.addAll(l2.ngrams);
                                 result.add(new MergedVector(l1.vector, l1.template, words, l1.count + l2.count));
@@ -163,24 +162,33 @@ public class Main {
                     cluster.ngrams.forEach((NGramm listOfTaggedWords)->{
                         featureMap.put(listOfTaggedWords.taggedWords, feature);
                     });
-
                 }
         );
         List<String> descriptions = new ArrayList<>(descriptions1);
         Broadcast<List<String>> descriptionBroadcast = context.broadcast(descriptions);
         //Broadcast<Map<List<TaggedWord>, String>> descriptionMapBroadcast = context.broadcast(featureMap);
 
-        JavaRDD points = tagRDD.map((Tuple2<List<TaggedWord>, Float> rating) -> {
+        JavaRDD<LabeledPoint> points = tagRDD.map((Tuple2<List<TaggedWord>, Float> rating) -> {
             List<String> fbc = descriptionBroadcast.getValue();
             //Map<List<TaggedWord>, String> fmp = descriptionMapBroadcast.getValue();
             double[] v = new double[fbc.size()];
-            //List<Tuple2<List<TaggedWord>, Integer>> output =  BigramThesis.findKGramsEx(3, rating._1, template);
-            List<TaggedWord> output = rating._1().stream().filter((TaggedWord tw) -> (fbc.contains(tw.word()))).collect(Collectors.toList());
-            output.forEach((TaggedWord feature) -> {
-                v[fbc.indexOf(feature.word())] = 1; //TODO: Index of is ugly and costs time
-            });
-            return new LabeledPoint((double) (rating._2), Vectors.dense(v));
-        });
+            List<NGramm> output = new LinkedList<NGramm>();
+            BigramThesis.findKGramsEx(3, rating._1, template).forEach(result ->
+                    output.add(new NGramm(result._1(), template)));
+            //List<TaggedWord> output = rating._1().stream().filter((TaggedWord tw) -> (fbc.contains(tw.word()))).collect(Collectors.toList());
+            Boolean foundOne = false;
+            for (NGramm ngram : output) {
+                String description = ngram.template.getDescription(ngram.taggedWords);
+                foundOne = true;
+                int index = fbc.indexOf(description);
+                if (index >= 0) {
+                    v[index] = 1;
+                }
+            }
+            if (foundOne) {
+                return new LabeledPoint((double) (rating._2), Vectors.dense(v));
+            }else return null;
+        }).filter(point -> point!= null);
 
         DataFrame training = sqlContext.createDataFrame(points, LabeledPoint.class);
 
@@ -188,7 +196,7 @@ public class Main {
         org.apache.spark.ml.regression.LinearRegression lr = new org.apache.spark.ml.regression.LinearRegression();
 
         lr.setMaxIter(20)
-                .setRegParam(0.01);
+                .setRegParam(0.05);
 
         LinearRegressionModel model1 = lr.train(training);
 
@@ -207,7 +215,8 @@ public class Main {
         }
 
         Iterator<Map.Entry<String, Double>> i = Utility.valueIterator(map);
-        for (String feature : featureMap.values()){
+        Set<String> features3 = new HashSet<>(featureMap.values());
+        for (String feature : features3){
             Map<String, Double> scores = new HashMap<>();
             for(Map.Entry<List<TaggedWord>, String> entry: featureMap.entrySet()){
                 if (entry.getValue().equals(feature)){
