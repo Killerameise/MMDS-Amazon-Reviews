@@ -71,7 +71,7 @@ public class Main {
         Word2VecModel model = word2Vec.fit(textRdd);
 
 
-        Template template = new AdjectiveNounTemplate();
+        Template template = new AdjectiveNounTemplate(); //TODO: use more templates again
         JavaRDD<List<Tuple2<List<TaggedWord>, Integer>>> rddValuesRDD = tagRDD.map(
                 taggedWords -> BigramThesis.findKGramsEx(3, taggedWords._1(), template)
         ); //TODO: carry on review id and review score for use by linear model
@@ -96,7 +96,7 @@ public class Main {
                     List<MergedVector> new_acc = new LinkedList<>(acc);
                     for (int i = 0; i < acc.size(); i++) {
                         MergedVector l = acc.get(i);
-                        if(l.feature.equals(value._1().representative) ||compare(value._1(), l)){
+                        if(l.feature.equals(value._1().representative) || compare(value._1(), l)){
                             new_acc.remove(i);
                             Set<NGramm> words = new HashSet<>(l.ngrams);
                             words.add(value._1().ngram);
@@ -116,24 +116,22 @@ public class Main {
                 (List<MergedVector> acc1, List<MergedVector> acc2) -> {
                     List<MergedVector> dotProduct = new LinkedList<>();
                     List<MergedVector> result = new LinkedList<>();
+                    Set<Integer> deletedItems = new HashSet<>();
                     dotProduct.addAll(acc1);
                     dotProduct.addAll(acc2);
                     for (int i = 0; i < dotProduct.size(); i++) {
-                        Boolean foundOne = false;
                         MergedVector l1 = dotProduct.get(i);
                         for (int j = i + 1; j < dotProduct.size(); j++) {
+                            if (deletedItems.contains(j)) continue;
                             MergedVector l2 = dotProduct.get(j);
                             if(l1.feature.equals(l2.feature) || compare(l1, l2)){
                                 Set<NGramm> words = new HashSet<>(l1.ngrams);
                                 words.addAll(l2.ngrams);
-                                result.add(new MergedVector(l1.vector, l1.template, words, l1.count + l2.count));
-                                foundOne = true;
-                                break;
+                                l1 = new MergedVector(l1.vector, l1.template, words, l1.count + l2.count);
+                                deletedItems.add(j);
                             }
                         }
-                        if (!foundOne) {
-                            result.add(new MergedVector(l1.vector, l1.template, l1.ngrams, l1.count));
-                        }
+                        result.add(l1);
                     }
                     return result;
                 }
@@ -308,25 +306,6 @@ public class Main {
             return false;
         }
         return threshold < cosineSimilarity(v1, v2);
-    }
-
-    public static <T> T mostCommon(List<T> list) {
-        Map<T, Integer> map = new HashMap<>();
-
-        for (T t : list) {
-            Integer val = map.get(t);
-            map.put(t, val == null ? 1 : val + 1);
-        }
-
-        Map.Entry<T, Integer> max = null;
-
-        for (Map.Entry<T, Integer> e : map.entrySet()) {
-            if (max == null || e.getValue() > max.getValue()) {
-                max = e;
-            }
-        }
-
-        return max.getKey();
     }
 
     public static class VectorWithWords implements Serializable {
