@@ -13,12 +13,18 @@ import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.broadcast.Broadcast;
+import org.apache.spark.graphx.Graph;
 import org.apache.spark.ml.regression.LinearRegressionModel;
 import org.apache.spark.mllib.feature.Word2Vec;
 import org.apache.spark.mllib.feature.Word2VecModel;
+import org.apache.spark.mllib.linalg.DenseVector;
 import org.apache.spark.mllib.linalg.Vector;
 import org.apache.spark.mllib.linalg.Vectors;
+import org.apache.spark.mllib.linalg.distributed.CoordinateMatrix;
+import org.apache.spark.mllib.linalg.distributed.MatrixEntry;
+import org.apache.spark.mllib.linalg.distributed.RowMatrix;
 import org.apache.spark.mllib.regression.LabeledPoint;
+import org.apache.spark.rdd.RDD;
 import org.apache.spark.sql.DataFrame;
 import org.apache.spark.sql.SQLContext;
 import scala.Tuple2;
@@ -32,6 +38,7 @@ import java.util.stream.Collectors;
 public class Main {
     private static String reviewPath = "resources/reviews";
     private static int CPUS = 8;
+    private static double threshold = 0.9;
 
     public static void main(String args[]) {
 
@@ -89,155 +96,222 @@ public class Main {
 
         JavaPairRDD<Match, Integer> repartitionedVectorRDD = vectorRDD.repartition(CPUS);
 
-        List<MergedVector> clusters = repartitionedVectorRDD.treeAggregate(
-                new LinkedList<>(),
-                (List<MergedVector> acc, Tuple2<Match, Integer> value) -> {
-                    Boolean foundOne = false;
-                    List<MergedVector> new_acc = new LinkedList<>(acc);
-                    for (int i = 0; i < acc.size(); i++) {
-                        MergedVector l = acc.get(i);
-                        if(l.feature.equals(value._1().representative) ||compare(value._1(), l)){
-                            new_acc.remove(i);
-                            Set<NGramm> words = new HashSet<>(l.ngrams);
-                            words.add(value._1().ngram);
-                            new_acc.add(new MergedVector(l.vector, l.template, words, l.count + value._2()));
-                            foundOne = true;
-                            break;
-                        }
-                    }
-                    if (!foundOne) {
-                        Set<NGramm> words = new HashSet<>();
-                        words.add(value._1().ngram);
-                        new_acc.add(new MergedVector(value._1().vectors, value._1().template, words, value._2()));
-                    }
-                    return new_acc;
+        JavaRDD<Vector> vectors = repartitionedVectorRDD.map( tuple -> tuple._1().getVectors().get(0).vector);
 
-                },
-                (List<MergedVector> acc1, List<MergedVector> acc2) -> {
-                    List<MergedVector> dotProduct = new LinkedList<>();
-                    List<MergedVector> result = new LinkedList<>();
-                    dotProduct.addAll(acc1);
-                    dotProduct.addAll(acc2);
-                    for (int i = 0; i < dotProduct.size(); i++) {
-                        Boolean foundOne = false;
-                        MergedVector l1 = dotProduct.get(i);
-                        for (int j = i + 1; j < dotProduct.size(); j++) {
-                            MergedVector l2 = dotProduct.get(j);
-                            if(l1.feature.equals(l2.feature) || compare(l1, l2)){
-                                Set<NGramm> words = new HashSet<>(l1.ngrams);
-                                words.addAll(l2.ngrams);
-                                result.add(new MergedVector(l1.vector, l1.template, words, l1.count + l2.count));
-                                foundOne = true;
-                                break;
-                            }
-                        }
-                        if (!foundOne) {
-                            result.add(new MergedVector(l1.vector, l1.template, l1.ngrams, l1.count));
-                        }
-                    }
-                    return result;
-                }
-        );
+        RowMatrix mat = new RowMatrix(vectors.rdd());
 
-        System.out.println(clusters.size());
+        System.out.println("Transposing Matrix");
 
-        JavaRDD<MergedVector> mergedVectorRDD = context.parallelize(clusters, CPUS);
-        JavaPairRDD<MergedVector, Integer> unsortedClustersRDD = mergedVectorRDD.mapToPair(
-                (t) -> new Tuple2<>(t, t.count));
+        RowMatrix mat2 = transpose.transposeRowMatrix(mat);
 
-        JavaPairRDD<MergedVector, Integer> sortedClustersRDD = unsortedClustersRDD.mapToPair(Tuple2::swap)
-                .sortByKey(false).mapToPair(Tuple2::swap);
+        System.out.println("computing similarities");
 
-        JavaRDD<MergedVector> finalClusterRDD = sortedClustersRDD.map(Tuple2::_1);
+        CoordinateMatrix coords = mat2.columnSimilarities(0.7);
+        JavaRDD<MatrixEntry> entries = coords.entries().toJavaRDD();
+        System.out.println("finished");
 
-        finalClusterRDD.take(25).forEach((t) -> {
-            List<TaggedWord> representation = t.getNGramm().taggedWords;
-            System.out.println(representation.toString() + ": " + t.count.toString() + " | " + t.ngrams.stream()
-                    .map(n -> n.taggedWords.stream().map(tw -> tw.word()).collect(Collectors.joining(", ")))
-                    .collect(Collectors.joining(" + ")));
-            System.out.println("Feature: " + template.getFeature(representation));
-        });
-
-        Set<String> features1 = new HashSet<>();
-        Set<String> descriptions1 = new HashSet<>();
-        Map<List<TaggedWord>, String> featureMap = new HashMap<>();
-
-        finalClusterRDD.take(25).forEach((MergedVector cluster) -> {
-                                             String feature = cluster.feature;
-                                             features1.add(feature);
-                                             descriptions1.addAll(cluster.descriptions);
-                                             cluster.ngrams.forEach((NGramm listOfTaggedWords) -> {
-                                                 featureMap.put(listOfTaggedWords.taggedWords, feature);
-                                             });
-
-                                         }
-        );
-        List<String> descriptions = new ArrayList<>(descriptions1);
-        Broadcast<List<String>> descriptionBroadcast = context.broadcast(descriptions);
-        //Broadcast<Map<List<TaggedWord>, String>> descriptionMapBroadcast = context.broadcast(featureMap);
-
-        JavaRDD<LabeledPoint> points = tagRDD.map((Tuple2<List<TaggedWord>, Float> rating) -> {
-            List<String> fbc = descriptionBroadcast.getValue();
-            //Map<List<TaggedWord>, String> fmp = descriptionMapBroadcast.getValue();
-            double[] v = new double[fbc.size()];
-            List<NGramm> output = new LinkedList<NGramm>();
-            BigramThesis.findKGramsEx(3, rating._1, template).forEach(result ->
-                    output.add(new NGramm(result._1(), template)));
-            //List<TaggedWord> output = rating._1().stream().filter((TaggedWord tw) -> (fbc.contains(tw.word()))).collect(Collectors.toList());
-            Boolean foundOne = false;
-            for (NGramm ngram : output) {
-                String description = ngram.template.getDescription(ngram.taggedWords);
-                foundOne = true;
-                int index = fbc.indexOf(description);
-                if (index >= 0) {
-                    v[index] = 1;
-                }
-            }
-            if (foundOne) {
-                return new LabeledPoint((double) (rating._2), Vectors.dense(v));
-            }else return null;
-        }).filter(point -> point!= null);
-
-        DataFrame training = sqlContext.createDataFrame(points, LabeledPoint.class);
+        graphops.getConnectedComponents(entries.filter(matrixEntry -> matrixEntry.value()>threshold).rdd());
+//        List<MatrixEntry> e = entries.filter(matrixEntry -> matrixEntry.value()>threshold).collect();
+//
+//        for (MatrixEntry entry : e){
+//            System.out.println(entry);
+//        }
+//        System.out.println(e.size());
 
 
-        org.apache.spark.ml.regression.LinearRegression lr = new org.apache.spark.ml.regression.LinearRegression();
 
-        lr.setMaxIter(20)
-                .setRegParam(0.05);
+//        entries.filter(matrixEntry -> matrixEntry.value()>threshold).aggregate(
+//                new LinkedList<List<MatrixEntry>>(),
+//                (List<List<MatrixEntry>> acc, MatrixEntry entry) ->{
+//                    List<List<MatrixEntry>> new_acc = new LinkedList<>(acc);
+//                    Boolean foundOne = false;
+//                    for (int i = 0; i < acc.size(); i++) {
+//                        List<MatrixEntry> list = acc.get(i);
+//                        if (list.get(0).i() == entry.i()){
+//                            list.add(entry);
+//                            foundOne = true;
+//                            break;
+//                        }
+//                    }
+//                    if (!foundOne){
+//                        List newList = new LinkedList();
+//                        newList.add(entry);
+//                        new_acc.add(newList);
+//                    }
+//                    return new_acc;
+//                },
+//        (List<List<MatrixEntry>> acc1, List<List<MatrixEntry>> acc2) ->{
+//            List<List<MatrixEntry>> dotProduct = new LinkedList<>();
+//            List<List<MatrixEntry>> result = new LinkedList<>();
+//            dotProduct.addAll(acc1);
+//            dotProduct.addAll(acc2);
+//        }
+//        )
+        //List<MatrixEntry> e = entries.collect();
 
-        LinearRegressionModel model1 = lr.train(training);
+//        for (MatrixEntry entry : e){
+//            System.out.println(entry);
+//        }
 
-        System.out.println("Model 1 was fit using parameters: " + model1.coefficients());
 
-        Map<String, Double> map = new HashMap<>();
-        double[] coeffs = model1.coefficients().toArray();
-        for (int i = 0; i < coeffs.length; i++) {
-            int index = i;
-            map.put(descriptions.get(i), coeffs[i]);
-            /*featureMap.entrySet().stream().filter((Map.Entry<List<TaggedWord>, String> entry) -> (features.indexOf(entry.getValue()) == index))
-                    .forEach((Map.Entry<List<TaggedWord>, String> entry2) -> {
-                        map.put(entry2.getValue(), coeffs[index]);
-                    });*/ // a beauty of its own quality
 
-        }
 
-        Iterator<Map.Entry<String, Double>> i = Utility.valueIterator(map);
-        Set<String> features3 = new HashSet<>(featureMap.values());
-        for (String feature : features3){
-            Map<String, Double> scores = new HashMap<>();
-            for (Map.Entry<List<TaggedWord>, String> entry : featureMap.entrySet()) {
-                if (entry.getValue().equals(feature)) {
-                    for (TaggedWord word : entry.getKey()) {
-                        if (map.containsKey(word.word())) {
-                            scores.put(word.word(), map.get(word.word()));
-                        }
-                    }
-                }
-            }
-            System.out.println(feature + ": ");
-            System.out.println(scores);
-        }
+
+
+
+
+
+
+//        coords.entries().foreach(entry -> {
+//
+//        });
+
+
+
+//        List<MergedVector> clusters = repartitionedVectorRDD.treeAggregate(
+//                new LinkedList<>(),
+//                (List<MergedVector> acc, Tuple2<Match, Integer> value) -> {
+//                    Boolean foundOne = false;
+//                    List<MergedVector> new_acc = new LinkedList<>(acc);
+//                    for (int i = 0; i < acc.size(); i++) {
+//                        MergedVector l = acc.get(i);
+//                        if (l.feature.equals(value._1().representative) || compare(value._1(), l)) {
+//                            new_acc.remove(i);
+//                            Set<NGramm> words = new HashSet<>(l.ngrams);
+//                            words.add(value._1().ngram);
+//                            new_acc.add(new MergedVector(l.vector, l.template, words, l.count + value._2()));
+//                            foundOne = true;
+//                            break;
+//                        }
+//                    }
+//                    if (!foundOne) {
+//                        Set<NGramm> words = new HashSet<>();
+//                        words.add(value._1().ngram);
+//                        new_acc.add(new MergedVector(value._1().vectors, value._1().template, words, value._2()));
+//                    }
+//                    return new_acc;
+//
+//                },
+//                (List<MergedVector> acc1, List<MergedVector> acc2) -> {
+//                    List<MergedVector> dotProduct = new LinkedList<>();
+//                    List<MergedVector> result = new LinkedList<>();
+//                    dotProduct.addAll(acc1);
+//                    dotProduct.addAll(acc2);
+//                    for (int i = 0; i < dotProduct.size(); i++) {
+//                        Boolean foundOne = false;
+//                        MergedVector l1 = dotProduct.get(i);
+//                        for (int j = i + 1; j < dotProduct.size(); j++) {
+//                            MergedVector l2 = dotProduct.get(j);
+//                            if (l1.feature.equals(l2.feature) || compare(l1, l2)) {
+//                                Set<NGramm> words = new HashSet<>(l1.ngrams);
+//                                words.addAll(l2.ngrams);
+//                                result.add(new MergedVector(l1.vector, l1.template, words, l1.count + l2.count));
+//                                foundOne = true;
+//                                break;
+//                            }
+//                        }
+//                        if (!foundOne) {
+//                            result.add(new MergedVector(l1.vector, l1.template, l1.ngrams, l1.count));
+//                        }
+//                    }
+//                    return result;
+//                }
+//        );
+//
+//        System.out.println(clusters.size());
+//
+//        JavaRDD<MergedVector> mergedVectorRDD = context.parallelize(clusters, CPUS);
+//        JavaPairRDD<MergedVector, Integer> unsortedClustersRDD = mergedVectorRDD.mapToPair(
+//                (t) -> new Tuple2<>(t, t.count));
+//
+//        JavaPairRDD<MergedVector, Integer> sortedClustersRDD = unsortedClustersRDD.mapToPair(Tuple2::swap)
+//                .sortByKey(false).mapToPair(Tuple2::swap);
+//
+//        JavaRDD<MergedVector> finalClusterRDD = sortedClustersRDD.map(Tuple2::_1);
+//
+//        Set<String> features1 = new HashSet<>();
+//        Set<String> descriptions1 = new HashSet<>();
+//        Map<List<TaggedWord>, String> featureMap = new HashMap<>();
+//
+//        JavaRDD<MergedVector> top25ClusterRDD = context.parallelize(finalClusterRDD.take(25));
+//        top25ClusterRDD.foreach((MergedVector t) -> {
+//                    List<TaggedWord> representation = t.getNGramm().taggedWords;
+//                    String feature = t.feature;
+//                    features1.add(feature);
+//                    descriptions1.addAll(t.descriptions);
+//                    t.ngrams.forEach((NGramm listOfTaggedWords) -> {
+//                        featureMap.put(listOfTaggedWords.taggedWords, feature);
+//                    });
+//                    System.out.println(representation.toString() + ": " + t.count.toString() + " | " + t.ngrams.stream()
+//                            .map(n -> n.taggedWords.stream().map(tw -> tw.word()).collect(Collectors.joining(", ")))
+//                            .collect(Collectors.joining(" + ")));
+//                    System.out.println("Feature: " + template.getFeature(representation));
+//
+//                    List<String> fbc = new ArrayList<String>(t.descriptions);
+//                    JavaRDD<LabeledPoint> points = tagRDD.map((Tuple2<List<TaggedWord>, Float> rating) -> {
+//                        //Map<List<TaggedWord>, String> fmp = descriptionMapBroadcast.getValue();
+//                        double[] v = new double[fbc.size()];
+//                        List<NGramm> output = new LinkedList<NGramm>();
+//                        BigramThesis.findKGramsEx(3, rating._1, template).forEach(result ->
+//                                output.add(new NGramm(result._1(), template)));
+//                        //List<TaggedWord> output = rating._1().stream().filter((TaggedWord tw) -> (fbc.contains(tw.word()))).collect(Collectors.toList());
+//                        Boolean foundOne = false;
+//                        for (NGramm ngram : output) {
+//                            String description = ngram.template.getDescription(ngram.taggedWords);
+//                            foundOne = true;
+//                            int index = fbc.indexOf(description);
+//                            if (index >= 0) {
+//                                v[index] += 1;
+//                            }
+//                        }
+//                        if (foundOne) {
+//                            return new LabeledPoint((double) (rating._2), Vectors.dense(v));
+//                        } else return null;
+//                    }).filter(point -> point != null);
+//
+//                    DataFrame training = sqlContext.createDataFrame(points, LabeledPoint.class);
+//
+//
+//                    org.apache.spark.ml.regression.LinearRegression lr = new org.apache.spark.ml.regression.LinearRegression();
+//
+//                    lr.setMaxIter(20)
+//                            .setRegParam(0.05);
+//
+//                    LinearRegressionModel model1 = lr.train(training);
+//
+//                    System.out.println("Model 1 was fit using parameters: " + model1.coefficients());
+//
+//                    Map<String, Double> map = new HashMap<>();
+//                    double[] coeffs = model1.coefficients().toArray();
+//                    for (int i = 0; i < coeffs.length; i++) {
+//                        map.put(fbc.get(i), coeffs[i]);
+//            /*featureMap.entrySet().stream().filter((Map.Entry<List<TaggedWord>, String> entry) -> (features.indexOf(entry.getValue()) == index))
+//                    .forEach((Map.Entry<List<TaggedWord>, String> entry2) -> {
+//                        map.put(entry2.getValue(), coeffs[index]);
+//                    });*/ // a beauty of its own quality
+//
+//                    }
+//
+//                    Iterator<Map.Entry<String, Double>> i = Utility.valueIterator(map);
+//                    Set<String> features3 = new HashSet<>(featureMap.values());
+//                    //for (String feature : features3){
+//                    Map<String, Double> scores = new HashMap<>();
+//                    for (Map.Entry<List<TaggedWord>, String> entry : featureMap.entrySet()) {
+//                        if (entry.getValue().equals(feature)) {
+//                            for (TaggedWord word : entry.getKey()) {
+//                                if (map.containsKey(word.word())) {
+//                                    scores.put(word.word(), map.get(word.word()));
+//                                }
+//                            }
+//                        }
+//                    }
+//                    System.out.println(feature + ": ");
+//                    System.out.println(scores);
+//                });
+
+
+
+
 
 
 
