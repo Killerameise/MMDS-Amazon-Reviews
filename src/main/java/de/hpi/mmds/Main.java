@@ -21,6 +21,7 @@ import org.apache.spark.mllib.linalg.DenseVector;
 import org.apache.spark.mllib.linalg.Vector;
 import org.apache.spark.mllib.linalg.Vectors;
 import org.apache.spark.mllib.linalg.distributed.CoordinateMatrix;
+import org.apache.spark.mllib.linalg.distributed.IndexedRowMatrix;
 import org.apache.spark.mllib.linalg.distributed.MatrixEntry;
 import org.apache.spark.mllib.linalg.distributed.RowMatrix;
 import org.apache.spark.mllib.regression.LabeledPoint;
@@ -38,7 +39,7 @@ import java.util.stream.Collectors;
 public class Main {
     private static String reviewPath = "resources/reviews";
     private static int CPUS = 8;
-    private static double threshold = 0.9;
+    private static double threshold = 0.95;
 
     public static void main(String args[]) {
 
@@ -96,9 +97,10 @@ public class Main {
 
         JavaPairRDD<Match, Integer> repartitionedVectorRDD = vectorRDD.repartition(CPUS);
 
+        repartitionedVectorRDD.cache();
         JavaRDD<Vector> vectors = repartitionedVectorRDD.map( tuple -> tuple._1().getVectors().get(0).vector);
 
-        RowMatrix mat = new RowMatrix(vectors.rdd());
+        IndexedRowMatrix mat = new IndexedRowMatrix(vectors.rdd());
 
         System.out.println("Transposing Matrix");
 
@@ -106,11 +108,35 @@ public class Main {
 
         System.out.println("computing similarities");
 
-        CoordinateMatrix coords = mat2.columnSimilarities(0.7);
+        CoordinateMatrix coords = mat2.columnSimilarities(0.3);
         JavaRDD<MatrixEntry> entries = coords.entries().toJavaRDD();
         System.out.println("finished");
 
-        graphops.getConnectedComponents(entries.filter(matrixEntry -> matrixEntry.value()>threshold).rdd());
+        JavaPairRDD<Long, Long> asd = graphops.getConnectedComponents(entries.filter(matrixEntry -> matrixEntry.value() > threshold).rdd()).
+                mapToPair((Tuple2<Object, Object> tuple) -> new Tuple2<Long, Long>(Long.parseLong(tuple._1().toString()), Long.parseLong(tuple._2().toString())));
+
+        Map<Long, Set<Long>> x = asd.aggregate(new HashMap<Long, Set<Long>>(),
+                (HashMap<Long, Set<Long>> map, Tuple2<Long, Long> tuple) -> {
+                    if (!map.containsKey(tuple._2())) {
+                        Set<Long> set = new HashSet<Long>();
+                        set.add(tuple._1());
+                        map.put(tuple._2(), set);
+                    }else {
+                        map.get(tuple._2()).add(tuple._1());
+                    }
+                    return map;
+                },
+                (HashMap<Long, Set<Long>> map1, HashMap<Long, Set<Long>> map2) -> {
+                    map1.putAll(map2);
+                    return map1;
+                });
+        System.out.println(x);
+
+
+
+        //asd.collect().stream().forEach(tuple -> System.out.println(tuple));
+
+
 //        List<MatrixEntry> e = entries.filter(matrixEntry -> matrixEntry.value()>threshold).collect();
 //
 //        for (MatrixEntry entry : e){
