@@ -1,6 +1,9 @@
 package de.hpi.mmds;
 
+import de.hpi.mmds.database.MetadataRecord;
 import de.hpi.mmds.database.ReviewRecord;
+import de.hpi.mmds.filter.CategoryFilter;
+import de.hpi.mmds.filter.PriceFilter;
 import de.hpi.mmds.json.JsonReader;
 import de.hpi.mmds.nlp.BigramThesis;
 import de.hpi.mmds.nlp.Utility;
@@ -41,18 +44,34 @@ public class Main {
         JavaSparkContext context = new JavaSparkContext(conf);
         SQLContext sqlContext = new SQLContext(context);
 
-        if (args.length == 2) {
+        if (args.length >= 1) {
             reviewPath = args[0];
-            CPUS = new Integer(args[1]);
         } else {
             File folder = new File(reviewPath);
             File[] reviewFiles = folder.listFiles((dir, name) -> name.endsWith(".json"));
             reviewPath = reviewFiles[0].getAbsolutePath();
         }
 
+        if (args.length >= 2) {
+            CPUS = Integer.valueOf(args[1]);
+        }
+
+        List<String> products = null;
+        if (args.length >= 3) {
+            String metadataFile = args[2];
+            JavaRDD<MetadataRecord> inputRDD = context.textFile(metadataFile, CPUS).map(JsonReader::readMetadataJson);
+            PriceFilter filter = new PriceFilter(new CategoryFilter(inputRDD, "Guitar & Bass Accessories").chain(), 5.0, 500.0);
+            products = filter.toList();
+        }
+        Broadcast<List<String>> productBroadcast = context.broadcast(products);
+
         JavaRDD<String> fileRDD = context.textFile(reviewPath, CPUS);
 
         JavaRDD<ReviewRecord> recordsRDD = fileRDD.map(JsonReader::readReviewJson);
+
+        if (productBroadcast.getValue() != null) {
+            recordsRDD = recordsRDD.filter((record) -> productBroadcast.getValue().contains(record.asin));
+        }
 
         JavaPairRDD<List<TaggedWord>, Float> tagRDD = recordsRDD.mapToPair(
                 (ReviewRecord x) -> new Tuple2(Utility.posTag(x.getReviewText()), x.getOverall()));
