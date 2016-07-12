@@ -1,6 +1,9 @@
 package de.hpi.mmds;
 
+import de.hpi.mmds.database.MetadataRecord;
 import de.hpi.mmds.database.ReviewRecord;
+import de.hpi.mmds.filter.CategoryFilter;
+import de.hpi.mmds.filter.PriceFilter;
 import de.hpi.mmds.json.JsonReader;
 import de.hpi.mmds.nlp.BigramThesis;
 import de.hpi.mmds.nlp.Utility;
@@ -51,18 +54,34 @@ public class Main {
         JavaSparkContext context = new JavaSparkContext(conf);
         SQLContext sqlContext = new SQLContext(context);
 
-        if (args.length == 2) {
+        if (args.length >= 1) {
             reviewPath = args[0];
-            CPUS = new Integer(args[1]);
         } else {
             File folder = new File(reviewPath);
             File[] reviewFiles = folder.listFiles((dir, name) -> name.endsWith(".json"));
             reviewPath = reviewFiles[0].getAbsolutePath();
         }
 
+        if (args.length >= 2) {
+            CPUS = Integer.valueOf(args[1]);
+        }
+
+        List<String> products = null;
+        if (args.length >= 3) {
+            String metadataFile = args[2];
+            JavaRDD<MetadataRecord> inputRDD = context.textFile(metadataFile, CPUS).map(JsonReader::readMetadataJson);
+            PriceFilter filter = new PriceFilter(new CategoryFilter(inputRDD, "Guitar & Bass Accessories").chain(), 5.0, 500.0);
+            products = filter.toList();
+        }
+        Broadcast<List<String>> productBroadcast = context.broadcast(products);
+
         JavaRDD<String> fileRDD = context.textFile(reviewPath, CPUS);
 
         JavaRDD<ReviewRecord> recordsRDD = fileRDD.map(JsonReader::readReviewJson);
+
+        if (productBroadcast.getValue() != null) {
+            recordsRDD = recordsRDD.filter((record) -> productBroadcast.getValue().contains(record.asin));
+        }
 
         JavaPairRDD<List<TaggedWord>, Float> tagRDD = recordsRDD.mapToPair(
                 (ReviewRecord x) -> new Tuple2(Utility.posTag(x.getReviewText()), x.getOverall()));
@@ -81,7 +100,7 @@ public class Main {
         Word2VecModel model = word2Vec.fit(textRdd);
 
 
-        Template template = new AdjectiveNounTemplate();
+        Template template = new AdjectiveNounTemplate(); //TODO: use more templates again
         JavaRDD<List<Tuple2<List<TaggedWord>, Integer>>> rddValuesRDD = tagRDD.map(
                 taggedWords -> BigramThesis.findKGramsEx(3, taggedWords._1(), template)
         ); //TODO: carry on review id and review score for use by linear model
@@ -97,156 +116,13 @@ public class Main {
             return new Tuple2<>(new Match(vectors, template), a._2);
         });
 
-        JavaPairRDD<Tuple2<Match, Integer>, Long> repartitionedVectorRDD = vectorRDD.repartition(CPUS).zipWithIndex();
+        JavaPairRDD<Match, Integer> repartitionedVectorRDD = vectorRDD.repartition(CPUS);
 
-        JavaPairRDD<Long, Tuple2<Match, Integer>> swappedRepartitionedVectorRDD = repartitionedVectorRDD.mapToPair(Tuple2::swap);
+        /**
+         * Insert Duplicate Detection method here:
+         */
 
-        //repartitionedVectorRDD.cache();
-        JavaPairRDD<Vector, Long> indexedVectors = repartitionedVectorRDD.mapToPair((Tuple2<Tuple2<Match, Integer>, Long> tuple) -> (new Tuple2<Vector, Long>(tuple._1()._1().getVectors().get(0).vector, tuple._2())));
-        JavaRDD<IndexedRow> rows = indexedVectors.map(tuple -> new IndexedRow(tuple._2(), tuple._1()));
-
-        IndexedRowMatrix mat = new IndexedRowMatrix(rows.rdd());
-
-        System.out.println("Transposing Matrix");
-
-        RowMatrix mat2 = transposeRowMatrix(mat);
-
-        System.out.println("computing similarities");
-
-        CoordinateMatrix coords = mat2.columnSimilarities(0.3);
-        JavaRDD<MatrixEntry> entries = coords.entries().toJavaRDD();
-        System.out.println("finished");
-
-        JavaPairRDD<Long, Long> asd = graphops.getConnectedComponents(entries.filter(matrixEntry -> matrixEntry.value() > threshold).rdd()).
-                mapToPair((Tuple2<Object, Object> tuple) -> new Tuple2<Long, Long>(Long.parseLong(tuple._1().toString()), Long.parseLong(tuple._2().toString())));
-
-        JavaPairRDD<Long, Match> h = asd.join(swappedRepartitionedVectorRDD).mapToPair(tuple -> new Tuple2<Long, Match>(tuple._2()._1(), tuple._2()._2()._1()));
-
-        JavaPairRDD<Long, Iterable<Match>> i2 = h.groupByKey();
-
-        //System.out.println(i.collectAsMap());
-
-
-
-
-//        List<MatrixEntry> e = entries.filter(matrixEntry -> matrixEntry.value()>threshold).collect();
-//
-//        for (MatrixEntry entry : e){
-//            System.out.println(entry);
-//        }
-//        System.out.println(e.size());
-
-
-
-//        entries.filter(matrixEntry -> matrixEntry.value()>threshold).aggregate(
-//                new LinkedList<List<MatrixEntry>>(),
-//                (List<List<MatrixEntry>> acc, MatrixEntry entry) ->{
-//                    List<List<MatrixEntry>> new_acc = new LinkedList<>(acc);
-//                    Boolean foundOne = false;
-//                    for (int i = 0; i < acc.size(); i++) {
-//                        List<MatrixEntry> list = acc.get(i);
-//                        if (list.get(0).i() == entry.i()){
-//                            list.add(entry);
-//                            foundOne = true;
-//                            break;
-//                        }
-//                    }
-//                    if (!foundOne){
-//                        List newList = new LinkedList();
-//                        newList.add(entry);
-//                        new_acc.add(newList);
-//                    }
-//                    return new_acc;
-//                },
-//        (List<List<MatrixEntry>> acc1, List<List<MatrixEntry>> acc2) ->{
-//            List<List<MatrixEntry>> dotProduct = new LinkedList<>();
-//            List<List<MatrixEntry>> result = new LinkedList<>();
-//            dotProduct.addAll(acc1);
-//            dotProduct.addAll(acc2);
-//        }
-//        )
-        //List<MatrixEntry> e = entries.collect();
-
-//        for (MatrixEntry entry : e){
-//            System.out.println(entry);
-//        }
-
-
-
-
-
-
-
-
-
-
-//        coords.entries().foreach(entry -> {
-//
-//        });
-
-
-
-//        List<MergedVector> clusters = repartitionedVectorRDD.treeAggregate(
-//                new LinkedList<>(),
-//                (List<MergedVector> acc, Tuple2<Match, Integer> value) -> {
-//                    Boolean foundOne = false;
-//                    List<MergedVector> new_acc = new LinkedList<>(acc);
-//                    for (int i = 0; i < acc.size(); i++) {
-//                        MergedVector l = acc.get(i);
-//                        if (l.feature.equals(value._1().representative) || compare(value._1(), l)) {
-//                            new_acc.remove(i);
-//                            Set<NGramm> words = new HashSet<>(l.ngrams);
-//                            words.add(value._1().ngram);
-//                            new_acc.add(new MergedVector(l.vector, l.template, words, l.count + value._2()));
-//                            foundOne = true;
-//                            break;
-//                        }
-//                    }
-//                    if (!foundOne) {
-//                        Set<NGramm> words = new HashSet<>();
-//                        words.add(value._1().ngram);
-//                        new_acc.add(new MergedVector(value._1().vectors, value._1().template, words, value._2()));
-//                    }
-//                    return new_acc;
-//
-//                },
-//                (List<MergedVector> acc1, List<MergedVector> acc2) -> {
-//                    List<MergedVector> dotProduct = new LinkedList<>();
-//                    List<MergedVector> result = new LinkedList<>();
-//                    dotProduct.addAll(acc1);
-//                    dotProduct.addAll(acc2);
-//                    for (int i = 0; i < dotProduct.size(); i++) {
-//                        Boolean foundOne = false;
-//                        MergedVector l1 = dotProduct.get(i);
-//                        for (int j = i + 1; j < dotProduct.size(); j++) {
-//                            MergedVector l2 = dotProduct.get(j);
-//                            if (l1.feature.equals(l2.feature) || compare(l1, l2)) {
-//                                Set<NGramm> words = new HashSet<>(l1.ngrams);
-//                                words.addAll(l2.ngrams);
-//                                result.add(new MergedVector(l1.vector, l1.template, words, l1.count + l2.count));
-//                                foundOne = true;
-//                                break;
-//                            }
-//                        }
-//                        if (!foundOne) {
-//                            result.add(new MergedVector(l1.vector, l1.template, l1.ngrams, l1.count));
-//                        }
-//                    }
-//                    return result;
-//                }
-//        );
-//
-//        System.out.println(clusters.size());
-
-        JavaRDD<MergedVector> mergedVectorRDD = i2.map(value -> {
-            Set<NGramm> ngrams = new HashSet<NGramm>();
-            value._2().iterator().forEachRemaining(it -> ngrams.add(it.getNGramm()));
-            Match mv = value._2().iterator().next();
-            return new MergedVector(mv.getVectors(), mv.template, ngrams, ngrams.size());
-        });
-//
-        //JavaRDD<MergedVector> mergedVectorRDD = context.parallelize(clusters, CPUS);
-        JavaPairRDD<MergedVector, Integer> unsortedClustersRDD = mergedVectorRDD.mapToPair(
+        JavaPairRDD<MergedVector, Integer> unsortedClustersRDD = AggregateDupDet.resolveDuplicates(repartitionedVectorRDD, threshold, context, CPUS).mapToPair(
                 (t) -> new Tuple2<>(t, t.count));
 
         JavaPairRDD<MergedVector, Integer> sortedClustersRDD = unsortedClustersRDD.mapToPair(Tuple2::swap)
@@ -340,30 +216,6 @@ public class Main {
             System.out.println(scores);
         }
 
-
-
-
-
-
-
-        /*System.out.println("Positive Words");
-        int j = 0;
-        while (j < 50 && i.hasNext()) {
-            Map.Entry<String, Double> entry = i.next();
-            System.out.println(entry);
-            j++;
-        }
-        System.out.println("");
-        System.out.println("Negative Words");
-        i = Utility.valueIteratorReverse(map);
-        j = 0;
-        while (j < 50 && i.hasNext() ) {
-            Map.Entry<String, Double> entry = i.next();
-            System.out.println(entry);
-            j++;
-
-        }*/
-
     }
 
     public static double cosineSimilarity(double[] docVector1, double[] docVector2) {
@@ -413,25 +265,6 @@ public class Main {
             return false;
         }
         return threshold < cosineSimilarity(v1, v2);
-    }
-
-    public static <T> T mostCommon(List<T> list) {
-        Map<T, Integer> map = new HashMap<>();
-
-        for (T t : list) {
-            Integer val = map.get(t);
-            map.put(t, val == null ? 1 : val + 1);
-        }
-
-        Map.Entry<T, Integer> max = null;
-
-        for (Map.Entry<T, Integer> e : map.entrySet()) {
-            if (max == null || e.getValue() > max.getValue()) {
-                max = e;
-            }
-        }
-
-        return max.getKey();
     }
 
     public static class VectorWithWords implements Serializable {
