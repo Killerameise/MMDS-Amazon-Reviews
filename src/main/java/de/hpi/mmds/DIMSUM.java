@@ -2,6 +2,7 @@ package de.hpi.mmds;
 
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.mllib.linalg.Vector;
 import org.apache.spark.mllib.linalg.distributed.*;
 import de.hpi.mmds.Main.*;
@@ -17,7 +18,7 @@ import java.util.Set;
  */
 public class DIMSUM{
 
-    public static JavaRDD<Main.MergedVector> resolveDuplicates(JavaPairRDD<Main.Match, Integer> repartitionedVectorRDD, Double threshold) {
+    public static JavaRDD<Main.MergedVector> resolveDuplicates(JavaPairRDD<Main.Match, Integer> repartitionedVectorRDD, Double threshold, JavaSparkContext context, Integer CPUS) {
         JavaPairRDD<Tuple2<Match, Integer>, Long> repartitionedVectorRDD2 = repartitionedVectorRDD.zipWithIndex();
         repartitionedVectorRDD2.cache();
         JavaPairRDD<Long, Tuple2<Main.Match, Integer>> swappedRepartitionedVectorRDD = repartitionedVectorRDD2.mapToPair(Tuple2::swap);

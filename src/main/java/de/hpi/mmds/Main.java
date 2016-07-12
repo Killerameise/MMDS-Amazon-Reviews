@@ -122,7 +122,7 @@ public class Main {
          * Insert Duplicate Detection method here:
          */
 
-        JavaPairRDD<MergedVector, Integer> unsortedClustersRDD = AggregateDupDet.resolveDuplicates(repartitionedVectorRDD, threshold, context, CPUS).mapToPair(
+        JavaPairRDD<MergedVector, Integer> unsortedClustersRDD = DIMSUM.resolveDuplicates(repartitionedVectorRDD, threshold, context, CPUS).mapToPair(
                 (t) -> new Tuple2<>(t, t.count));
 
         JavaPairRDD<MergedVector, Integer> sortedClustersRDD = unsortedClustersRDD.mapToPair(Tuple2::swap)
