@@ -177,84 +177,97 @@ public class Main {
 
         Set<String> features1 = new HashSet<>();
         Set<String> descriptions1 = new HashSet<>();
-        Map<List<TaggedWord>, String> featureMap = new HashMap<>();
+        //Map<List<TaggedWord>, String> featureMap = new HashMap<>();
 
+        List<Tuple2<Tuple2<String, String>, Double>> weighted = new LinkedList<>();
         finalClusterRDD.take(25).forEach((MergedVector cluster) -> {
-                                             String feature = cluster.feature;
-                                             features1.add(feature);
-                                             descriptions1.addAll(cluster.descriptions);
-                                             cluster.ngrams.forEach((NGramm listOfTaggedWords) -> {
-                                                 featureMap.put(listOfTaggedWords.taggedWords, feature);
-                                             });
+            String feature = cluster.feature;
+            features1.add(feature);
+            List<String> descriptions = new ArrayList<String>(cluster.descriptions);
+            Map<List<TaggedWord>, String> featureMap = new HashMap<>();
+            cluster.ngrams.forEach((NGramm listOfTaggedWords) -> {
+                featureMap.put(listOfTaggedWords.taggedWords, feature);
+            });
+            JavaRDD<LabeledPoint> points = tagRDD.map((Tuple2<List<TaggedWord>, Float> rating) -> {
+                //Map<List<TaggedWord>, String> fmp = descriptionMapBroadcast.getValue();
+                double[] v = new double[descriptions.size()];
+                List<NGramm> output = new LinkedList<NGramm>();
+                BigramThesis.findKGramsEx(3, rating._1, template).forEach(result ->
+                        output.add(new NGramm(result._1(), template)));
+                //List<TaggedWord> output = rating._1().stream().filter((TaggedWord tw) -> (fbc.contains(tw.word()))).collect(Collectors.toList());
+                Boolean foundOne = false;
+                for (NGramm ngram : output) {
+                    String description = ngram.template.getDescription(ngram.taggedWords);
+                    foundOne = true;
+                    int index = descriptions.indexOf(description);
+                    if (index >= 0) {
+                        v[index] = 1;
+                    }
+                }
+                if (foundOne) {
+                    return new LabeledPoint((double) (rating._2), Vectors.dense(v));
+                } else return null;
+            }).filter(point -> point != null);
 
-                                         }
-        );
-        List<String> descriptions = new ArrayList<>(descriptions1);
-        Broadcast<List<String>> descriptionBroadcast = context.broadcast(descriptions);
+            DataFrame training = sqlContext.createDataFrame(points, LabeledPoint.class);
+
+            org.apache.spark.ml.regression.LinearRegression lr = new org.apache.spark.ml.regression.LinearRegression();
+
+            lr.setMaxIter(20)
+                    .setRegParam(0.05);
+
+            LinearRegressionModel model1 = lr.train(training);
+
+            System.out.println("Model 1 was fit using parameters: " + model1.coefficients());
+
+            List<Tuple2<Tuple2<String, String>, Double>> list = new LinkedList<>();
+            double[] coeffs = model1.coefficients().toArray();
+            for (int i = 0; i < coeffs.length; i++) {
+                int index = i;
+                list.add(new Tuple2<>(new Tuple2<String, String>(descriptions.get(i), feature), coeffs[i]));
+            }
+            weighted.addAll(list);
+//            Iterator<Map.Entry<String, Double>> i = Utility.valueIterator(map);
+//            Set<String> features3 = new HashSet<>(featureMap.values());
+//            for (String feature3 : features3) {
+//                Map<String, Double> scores = new HashMap<>();
+//                for (Map.Entry<List<TaggedWord>, String> entry : featureMap.entrySet()) {
+//                    if (entry.getValue().equals(feature3)) {
+//                        for (TaggedWord word : entry.getKey()) {
+//                            if (map.containsKey(word.word())) {
+//                                scores.put(word.word(), map.get(word.word()));
+//                            }
+//                        }
+//                    }
+//                }
+//                System.out.println(feature3 + ": ");
+//                System.out.println(scores);
+//            }
+
+        });
+
+        JavaPairRDD<Tuple2<String, String>, Double> weighted2 = context.parallelizePairs(weighted);
+        System.out.println("Most positive");
+
+        weighted2.mapToPair(Tuple2::swap).sortByKey(false).take(25).forEach(tuple -> System.out.println(tuple._2() + ": " + tuple._1()));
+        System.out.println("Most negative");
+        weighted2.mapToPair(Tuple2::swap).sortByKey(true).take(25).forEach(tuple -> System.out.println(tuple._2() + ": " + tuple._1()));
+
+        //List<String> descriptions = new ArrayList<>(descriptions1);
+        //Broadcast<List<String>> descriptionBroadcast = context.broadcast(descriptions);
         //Broadcast<Map<List<TaggedWord>, String>> descriptionMapBroadcast = context.broadcast(featureMap);
 
-        JavaRDD<LabeledPoint> points = tagRDD.map((Tuple2<List<TaggedWord>, Float> rating) -> {
-            List<String> fbc = descriptionBroadcast.getValue();
-            //Map<List<TaggedWord>, String> fmp = descriptionMapBroadcast.getValue();
-            double[] v = new double[fbc.size()];
-            List<NGramm> output = new LinkedList<NGramm>();
-            BigramThesis.findKGramsEx(3, rating._1, template).forEach(result ->
-                    output.add(new NGramm(result._1(), template)));
-            //List<TaggedWord> output = rating._1().stream().filter((TaggedWord tw) -> (fbc.contains(tw.word()))).collect(Collectors.toList());
-            Boolean foundOne = false;
-            for (NGramm ngram : output) {
-                String description = ngram.template.getDescription(ngram.taggedWords);
-                foundOne = true;
-                int index = fbc.indexOf(description);
-                if (index >= 0) {
-                    v[index] = 1;
-                }
-            }
-            if (foundOne) {
-                return new LabeledPoint((double) (rating._2), Vectors.dense(v));
-            }else return null;
-        }).filter(point -> point!= null);
-
-        DataFrame training = sqlContext.createDataFrame(points, LabeledPoint.class);
 
 
-        org.apache.spark.ml.regression.LinearRegression lr = new org.apache.spark.ml.regression.LinearRegression();
 
-        lr.setMaxIter(20)
-                .setRegParam(0.05);
-
-        LinearRegressionModel model1 = lr.train(training);
-
-        System.out.println("Model 1 was fit using parameters: " + model1.coefficients());
-
-        Map<String, Double> map = new HashMap<>();
-        double[] coeffs = model1.coefficients().toArray();
-        for (int i = 0; i < coeffs.length; i++) {
-            int index = i;
-            map.put(descriptions.get(i), coeffs[i]);
             /*featureMap.entrySet().stream().filter((Map.Entry<List<TaggedWord>, String> entry) -> (features.indexOf(entry.getValue()) == index))
                     .forEach((Map.Entry<List<TaggedWord>, String> entry2) -> {
                         map.put(entry2.getValue(), coeffs[index]);
                     });*/ // a beauty of its own quality
 
-        }
 
-        Iterator<Map.Entry<String, Double>> i = Utility.valueIterator(map);
-        Set<String> features3 = new HashSet<>(featureMap.values());
-        for (String feature : features3){
-            Map<String, Double> scores = new HashMap<>();
-            for (Map.Entry<List<TaggedWord>, String> entry : featureMap.entrySet()) {
-                if (entry.getValue().equals(feature)) {
-                    for (TaggedWord word : entry.getKey()) {
-                        if (map.containsKey(word.word())) {
-                            scores.put(word.word(), map.get(word.word()));
-                        }
-                    }
-                }
-            }
-            System.out.println(feature + ": ");
-            System.out.println(scores);
-        }
+
+
 
 
 
