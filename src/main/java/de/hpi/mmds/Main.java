@@ -16,25 +16,35 @@ import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.broadcast.Broadcast;
+import org.apache.spark.graphx.Graph;
 import org.apache.spark.ml.regression.LinearRegressionModel;
 import org.apache.spark.mllib.feature.Word2Vec;
 import org.apache.spark.mllib.feature.Word2VecModel;
+import org.apache.spark.mllib.linalg.DenseVector;
 import org.apache.spark.mllib.linalg.Vector;
 import org.apache.spark.mllib.linalg.Vectors;
+import org.apache.spark.mllib.linalg.distributed.*;
 import org.apache.spark.mllib.regression.LabeledPoint;
+import org.apache.spark.rdd.RDD;
 import org.apache.spark.sql.DataFrame;
+import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SQLContext;
 import scala.Tuple2;
+//import edu.berkeley.cs.amplab.spark.indexedrdd.IndexedRDD;
+//import edu.berkeley.cs.amplab.spark.indexedrdd.IndexedRDD._;
 
 import java.io.File;
 import java.io.Serializable;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static de.hpi.mmds.transpose.*;
+
 
 public class Main {
     private static String reviewPath = "resources/reviews";
     private static int CPUS = 8;
+    private static double threshold = 0.95;
 
     public static void main(String args[]) {
 
@@ -108,58 +118,11 @@ public class Main {
 
         JavaPairRDD<Match, Integer> repartitionedVectorRDD = vectorRDD.repartition(CPUS);
 
-        List<MergedVector> clusters = repartitionedVectorRDD.treeAggregate(
-                new LinkedList<>(),
-                (List<MergedVector> acc, Tuple2<Match, Integer> value) -> {
-                    Boolean foundOne = false;
-                    List<MergedVector> new_acc = new LinkedList<>(acc);
-                    for (int i = 0; i < acc.size(); i++) {
-                        MergedVector l = acc.get(i);
-                        if(l.feature.equals(value._1().representative) || compare(value._1(), l)){
-                            new_acc.remove(i);
-                            Set<NGramm> words = new HashSet<>(l.ngrams);
-                            words.add(value._1().ngram);
-                            new_acc.add(new MergedVector(l.vector, l.template, words, l.count + value._2()));
-                            foundOne = true;
-                            break;
-                        }
-                    }
-                    if (!foundOne) {
-                        Set<NGramm> words = new HashSet<>();
-                        words.add(value._1().ngram);
-                        new_acc.add(new MergedVector(value._1().vectors, value._1().template, words, value._2()));
-                    }
-                    return new_acc;
+        /**
+         * Insert Duplicate Detection method here:
+         */
 
-                },
-                (List<MergedVector> acc1, List<MergedVector> acc2) -> {
-                    List<MergedVector> dotProduct = new LinkedList<>();
-                    List<MergedVector> result = new LinkedList<>();
-                    Set<Integer> deletedItems = new HashSet<>();
-                    dotProduct.addAll(acc1);
-                    dotProduct.addAll(acc2);
-                    for (int i = 0; i < dotProduct.size(); i++) {
-                        MergedVector l1 = dotProduct.get(i);
-                        for (int j = i + 1; j < dotProduct.size(); j++) {
-                            if (deletedItems.contains(j)) continue;
-                            MergedVector l2 = dotProduct.get(j);
-                            if(l1.feature.equals(l2.feature) || compare(l1, l2)){
-                                Set<NGramm> words = new HashSet<>(l1.ngrams);
-                                words.addAll(l2.ngrams);
-                                l1 = new MergedVector(l1.vector, l1.template, words, l1.count + l2.count);
-                                deletedItems.add(j);
-                            }
-                        }
-                        result.add(l1);
-                    }
-                    return result;
-                }
-        );
-
-        System.out.println(clusters.size());
-
-        JavaRDD<MergedVector> mergedVectorRDD = context.parallelize(clusters, CPUS);
-        JavaPairRDD<MergedVector, Integer> unsortedClustersRDD = mergedVectorRDD.mapToPair(
+        JavaPairRDD<MergedVector, Integer> unsortedClustersRDD = DIMSUM.resolveDuplicates(repartitionedVectorRDD, threshold, context, CPUS).mapToPair(
                 (t) -> new Tuple2<>(t, t.count));
 
         JavaPairRDD<MergedVector, Integer> sortedClustersRDD = unsortedClustersRDD.mapToPair(Tuple2::swap)
@@ -186,13 +149,10 @@ public class Main {
                                              cluster.ngrams.forEach((NGramm listOfTaggedWords) -> {
                                                  featureMap.put(listOfTaggedWords.taggedWords, feature);
                                              });
-
                                          }
         );
         List<String> descriptions = new ArrayList<>(descriptions1);
         Broadcast<List<String>> descriptionBroadcast = context.broadcast(descriptions);
-        //Broadcast<Map<List<TaggedWord>, String>> descriptionMapBroadcast = context.broadcast(featureMap);
-
         JavaRDD<LabeledPoint> points = tagRDD.map((Tuple2<List<TaggedWord>, Float> rating) -> {
             List<String> fbc = descriptionBroadcast.getValue();
             //Map<List<TaggedWord>, String> fmp = descriptionMapBroadcast.getValue();
@@ -255,26 +215,6 @@ public class Main {
             System.out.println(feature + ": ");
             System.out.println(scores);
         }
-
-
-
-        /*System.out.println("Positive Words");
-        int j = 0;
-        while (j < 50 && i.hasNext()) {
-            Map.Entry<String, Double> entry = i.next();
-            System.out.println(entry);
-            j++;
-        }
-        System.out.println("");
-        System.out.println("Negative Words");
-        i = Utility.valueIteratorReverse(map);
-        j = 0;
-        while (j < 50 && i.hasNext() ) {
-            Map.Entry<String, Double> entry = i.next();
-            System.out.println(entry);
-            j++;
-
-        }*/
 
     }
 
