@@ -2,13 +2,13 @@ package de.hpi.mmds
 
 import org.apache.spark.mllib.linalg.{Vectors, DenseVector}
 import org.apache.spark.mllib.linalg.Vector
-import org.apache.spark.mllib.linalg.distributed.RowMatrix
+import org.apache.spark.mllib.linalg.distributed.{IndexedRow, IndexedRowMatrix, RowMatrix}
 /**
  * Taken and slightly adapted from http://stackoverflow.com/a/31862441
  */
 object transpose {
-  def transposeRowMatrix(m: RowMatrix): RowMatrix = {
-    val transposedRowsRDD = m.rows.zipWithIndex.map{case (row, rowIndex) => rowToTransposedTriplet(row, rowIndex)}
+  def transposeRowMatrix(m: IndexedRowMatrix): RowMatrix = {
+    val transposedRowsRDD = m.rows.map{case (row: IndexedRow)  => rowToTransposedTriplet(row.vector, row.index)}
       .flatMap(x => x) // now we have triplets (newRowIndex, (newColIndex, value))
       .groupByKey()
       .sortByKey().map(_._2) // sort rows and remove row indexes

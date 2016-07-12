@@ -64,11 +64,11 @@
             <artifactId>apache</artifactId>
             <version>8</version>
         </dependency>-->
-        <dependency>
+        <!--<dependency>
             <groupId>org.scala-lang</groupId>
             <artifactId>scala-library-all</artifactId>
-            <version>2.12.0-M4</version>
-        </dependency>
+            <version>2.10.0-RC2</version>
+        </dependency>-->
     </dependencies>
     <build>
         <plugins>
