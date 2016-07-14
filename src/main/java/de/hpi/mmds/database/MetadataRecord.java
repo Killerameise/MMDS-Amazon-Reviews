@@ -3,9 +3,8 @@ package de.hpi.mmds.database;
 import com.google.gson.Gson;
 import com.google.gson.internal.LinkedTreeMap;
 
-/**
- * Created by jaspar.mang on 02.05.16.
- */
+import java.util.Collection;
+
 public class MetadataRecord {
     private String asin;
     private float price;
@@ -88,38 +87,38 @@ public class MetadataRecord {
         return json;
     }
 
-    class Related{
-        public String [] also_bought;
-        public String [] also_viewed;
-        public String [] bought_together;
+    public class Related{
+        public Collection<String> also_bought;
+        public Collection<String> also_viewed;
+        public Collection<String> bought_together;
 
-        public Related(String[] also_bought, String[] also_viewed, String[] bougt_together) {
+        public Related(Collection<String> also_bought, Collection<String> also_viewed, Collection<String> bougt_together) {
             this.also_bought = also_bought;
             this.also_viewed = also_viewed;
             this.bought_together = bougt_together;
         }
 
-        public String[] getAlso_bought() {
+        public Collection<String> getAlso_bought() {
             return also_bought;
         }
 
-        public void setAlso_bought(String[] also_bought) {
+        public void setAlso_bought(Collection<String> also_bought) {
             this.also_bought = also_bought;
         }
 
-        public String[] getAlso_viewed() {
+        public Collection<String> getAlso_viewed() {
             return also_viewed;
         }
 
-        public void setAlso_viewed(String[] also_viewed) {
+        public void setAlso_viewed(Collection<String> also_viewed) {
             this.also_viewed = also_viewed;
         }
 
-        public String[] getBougt_together() {
+        public Collection<String> getBougt_together() {
             return bought_together;
         }
 
-        public void setBougt_together(String[] bougt_together) {
+        public void setBougt_together(Collection<String> bougt_together) {
             this.bought_together = bougt_together;
         }
     }
