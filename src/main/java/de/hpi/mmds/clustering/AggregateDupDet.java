@@ -10,14 +10,19 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import scala.Tuple2;
 
+import java.io.Serializable;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 
-public class AggregateDupDet implements NGramClustering {
+public class AggregateDupDet implements NGramClustering, Serializable {
+
+    private Double threshold = 0.0;
+
     public JavaRDD<MergedVector> resolveDuplicates(JavaPairRDD<Match, Integer> repartitionedVectorRDD,
                                                    Double threshold, JavaSparkContext context, Integer CPUS) {
+        this.threshold = threshold;
         List<MergedVector> clusters = repartitionedVectorRDD.treeAggregate(
                 new LinkedList<>(),
                 (List<MergedVector> acc, Tuple2<Match, Integer> value) -> {
@@ -94,9 +99,8 @@ public class AggregateDupDet implements NGramClustering {
         return cosineSimilarity;
     }
 
-    private static boolean compare(TemplateBased t1, TemplateBased t2) {
-        double threshold = 0.9;
-
+    private boolean compare(TemplateBased t1, TemplateBased t2) {
+        //TODO: it would be nicer (and faster) to know the representing vector here...
         double[] v1 = null;
         String s1 = t1.getTemplate().getFeature(t1.getNGramm().taggedWords);
         for (VectorWithWords v : t1.getVectors()) {
@@ -113,9 +117,6 @@ public class AggregateDupDet implements NGramClustering {
             }
         }
 
-        if (v1 == null || v2 == null) {
-            return false;
-        }
-        return threshold < cosineSimilarity(v1, v2);
+        return v1 != null && v2 != null && threshold < cosineSimilarity(v1, v2);
     }
 }

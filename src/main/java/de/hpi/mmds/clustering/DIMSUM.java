@@ -10,10 +10,11 @@ import org.apache.spark.mllib.linalg.Vector;
 import org.apache.spark.mllib.linalg.distributed.*;
 import scala.Tuple2;
 
+import java.io.Serializable;
 import java.util.HashSet;
 import java.util.Set;
 
-public class DIMSUM implements NGramClustering {
+public class DIMSUM implements NGramClustering, Serializable {
 
     public JavaRDD<MergedVector> resolveDuplicates(JavaPairRDD<Match, Integer> repartitionedVectorRDD,
                                                    Double threshold, JavaSparkContext context, Integer CPUS) {
