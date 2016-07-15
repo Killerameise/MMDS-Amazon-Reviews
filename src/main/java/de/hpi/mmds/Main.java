@@ -31,6 +31,7 @@ import scala.Tuple2;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -46,7 +47,7 @@ public class Main {
 
         SparkConf conf = new SparkConf();
         conf.setIfMissing("spark.master", "local[" + CPUS + "]");
-        conf.setAppName("mmds-amazon");
+        conf.setAppName("mmds-amazon " + Arrays.asList(args));
         JavaSparkContext context = new JavaSparkContext(conf);
         SQLContext sqlContext = new SQLContext(context);
 
