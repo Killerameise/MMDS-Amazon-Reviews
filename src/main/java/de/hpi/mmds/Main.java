@@ -45,44 +45,20 @@ public class Main {
 
     public static void main(String args[]) {
 
+        reviewPath = handleReviewPathParameter(args);
+        CPUS = handleWorkerParameter(args);
+
         SparkConf conf = new SparkConf();
         conf.setIfMissing("spark.master", "local[" + CPUS + "]");
         conf.setAppName("mmds-amazon " + Arrays.asList(args));
         JavaSparkContext context = new JavaSparkContext(conf);
         SQLContext sqlContext = new SQLContext(context);
 
-        if (args.length >= 1) {
-            reviewPath = args[0];
-        } else {
-            File folder = new File(reviewPath);
-            File[] reviewFiles = folder.listFiles((dir, name) -> name.endsWith(".json"));
-            reviewPath = reviewFiles[0].getAbsolutePath();
-        }
-
-        if (args.length >= 2) {
-            CPUS = Integer.valueOf(args[1]);
-        }
-
-        List<String> products = null;
-        if (args.length >= 3) {
-            String metadataFile = args[2];
-            JavaRDD<MetadataRecord> inputRDD = context.textFile(metadataFile, CPUS).map(JsonReader::readMetadataJson);
-            PriceFilter filter = new PriceFilter(new CategoryFilter(inputRDD, "Guitar & Bass Accessories").chain(), 5.0, 500.0);
-            products = filter.toList();
-        }
+        List<String> products = handleFilterParameter(args, context);
         Broadcast<List<String>> productBroadcast = context.broadcast(products);
 
-        boolean useWord2Vec = false;
-        NGramClustering clusterAlgorithm = new ExactClustering();
-        if (args.length >= 4) {
-            String algorithm = args[3];
-            if (algorithm.equals("DIMSUM")) {
-                clusterAlgorithm = new DIMSUM();
-            } else if (algorithm.equals("TreeAggregate")) {
-                clusterAlgorithm = new AggregateDupDet();
-            }
-            useWord2Vec = true;
-        }
+        NGramClustering clusterAlgorithm = handleClusteringAlgorithmParameter(args);
+        boolean useWord2Vec = clusterAlgorithm.getClass() != ExactClustering.class;
 
         JavaRDD<String> fileRDD = context.textFile(reviewPath, CPUS);
 
@@ -101,17 +77,9 @@ public class Main {
                 a -> a._1.stream().map(Word::word).collect(Collectors.toList())
         );
 
-        Word2VecModel word2VecModel = null;
-        if (useWord2Vec) {
-            Word2Vec word2Vec = new Word2Vec()
-                    .setVectorSize(50)
-                    .setMinCount(0)
-                    .setNumPartitions(CPUS);
-            word2VecModel = word2Vec.fit(textRdd);
-        }
+        Word2VecModel word2VecModel = getWord2VecModel(useWord2Vec, textRdd);
         Broadcast<Boolean> word2vecBroadcast = context.broadcast(useWord2Vec);
         Broadcast<Word2VecModel> modelBroadcast = context.broadcast(word2VecModel);
-
 
         Template template = new AdjectiveNounTemplate();
         JavaRDD<List<Tuple2<List<TaggedWord>, Integer>>> rddValuesRDD = tagRDD.map(
@@ -163,6 +131,58 @@ public class Main {
         mostPositive.forEach(tuple -> System.out.println(tuple._2() + ": " + tuple._1()));
         System.out.println("Most negative");
         mostNegative.forEach(tuple -> System.out.println(tuple._2() + ": " + tuple._1()));
+    }
+
+    private static String handleReviewPathParameter(String[] args) {
+        if (args.length >= 1) {
+            return args[0];
+        } else {
+            File folder = new File(reviewPath);
+            File[] reviewFiles = folder.listFiles((dir, name) -> name.endsWith(".json"));
+            return reviewFiles[0].getAbsolutePath();
+        }
+    }
+
+    private static int handleWorkerParameter(String[] args) {
+        if (args.length >= 2) {
+            return Integer.valueOf(args[1]);
+        } else {
+            return CPUS;
+        }
+    }
+
+    private static List<String> handleFilterParameter(String[] args, JavaSparkContext context) {
+        if (args.length >= 3) {
+            String metadataFile = args[2];
+            JavaRDD<MetadataRecord> inputRDD = context.textFile(metadataFile, CPUS).map(JsonReader::readMetadataJson);
+            PriceFilter filter = new PriceFilter(new CategoryFilter(inputRDD, "Guitar & Bass Accessories").chain(),
+                                                 5.0, 500.0);
+            return filter.toList();
+        }
+        return null;
+    }
+
+    private static NGramClustering handleClusteringAlgorithmParameter(String[] args) {
+        if (args.length >= 4) {
+            String algorithm = args[3];
+            if (algorithm.equals("DIMSUM")) {
+                return new DIMSUM();
+            } else if (algorithm.equals("TreeAggregate")) {
+                return new AggregateDupDet();
+            }
+        }
+        return new ExactClustering();
+    }
+
+    private static Word2VecModel getWord2VecModel(boolean useWord2Vec, JavaRDD<List<String>> textRdd) {
+        if (useWord2Vec) {
+            Word2Vec word2Vec = new Word2Vec()
+                    .setVectorSize(50)
+                    .setMinCount(0)
+                    .setNumPartitions(CPUS);
+            return word2Vec.fit(textRdd);
+        }
+        return null;
     }
 
     private static List<Tuple2<Tuple2<String, String>, Double>> buildLinearModels(
