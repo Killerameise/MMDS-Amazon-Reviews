@@ -1,7 +1,6 @@
-package de.hpi.mmds
+package de.hpi.mmds.clustering
 
-import org.apache.spark.mllib.linalg.{Vectors, DenseVector}
-import org.apache.spark.mllib.linalg.Vector
+import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.linalg.distributed.{IndexedRow, IndexedRowMatrix, RowMatrix}
 /**
  * Taken and slightly adapted from http://stackoverflow.com/a/31862441

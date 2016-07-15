@@ -1,9 +1,12 @@
-package de.hpi.mmds;
+package de.hpi.mmds.clustering;
 
-import org.apache.spark.SparkContext;
+import de.hpi.mmds.Main;
+import de.hpi.mmds.Main.Match;
+import de.hpi.mmds.Main.MergedVector;
+import de.hpi.mmds.Main.NGramm;
+import de.hpi.mmds.nlp.template.TemplateBased;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
-import de.hpi.mmds.Main.*;
 import org.apache.spark.api.java.JavaSparkContext;
 import scala.Tuple2;
 
@@ -12,13 +15,9 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 
-import static de.hpi.mmds.Main.compare;
-
-/**
- * Created by axel on 12.07.16.
- */
-public class AggregateDupDet {
-    public static JavaRDD<Main.MergedVector> resolveDuplicates(JavaPairRDD<Main.Match, Integer> repartitionedVectorRDD, Double threshold, JavaSparkContext context, Integer CPUS) {
+public class AggregateDupDet implements NGramClustering {
+    public JavaRDD<MergedVector> resolveDuplicates(JavaPairRDD<Match, Integer> repartitionedVectorRDD,
+                                                   Double threshold, JavaSparkContext context, Integer CPUS) {
         List<MergedVector> clusters = repartitionedVectorRDD.treeAggregate(
                 new LinkedList<>(),
                 (List<MergedVector> acc, Tuple2<Match, Integer> value) -> {
@@ -68,12 +67,55 @@ public class AggregateDupDet {
                     return result;
                 }
         );
+        return context.parallelize(clusters, CPUS);
 
-        System.out.println(clusters.size());
+    }
 
-        JavaRDD<MergedVector> mergedVectorRDD = context.parallelize(clusters, CPUS);
+    private static double cosineSimilarity(double[] docVector1, double[] docVector2) {
+        double dotProduct = 0.0;
+        double magnitude1 = 0.0;
+        double magnitude2 = 0.0;
+        double cosineSimilarity = 0.0;
 
-        return mergedVectorRDD;
+        assert(docVector1.length == docVector2.length);
+        for (int i = 0; i < docVector1.length; i++)
+        {
+            dotProduct += docVector1[i] * docVector2[i];
+            magnitude1 += Math.pow(docVector1[i], 2);
+            magnitude2 += Math.pow(docVector2[i], 2);
+        }
 
+        magnitude1 = Math.sqrt(magnitude1);
+        magnitude2 = Math.sqrt(magnitude2);
+
+        if (magnitude1 != 0.0 | magnitude2 != 0.0) {
+            cosineSimilarity = dotProduct / (magnitude1 * magnitude2);
+        }
+        return cosineSimilarity;
+    }
+
+    private static boolean compare(TemplateBased t1, TemplateBased t2) {
+        double threshold = 0.9;
+
+        double[] v1 = null;
+        String s1 = t1.getTemplate().getFeature(t1.getNGramm().taggedWords);
+        for (Main.VectorWithWords v : t1.getVectors()) {
+            if (v.word.word().equals(s1)) {
+                v1 = v.vector.toArray();
+            }
+        }
+
+        double[] v2 = null;
+        String s2 = t2.getTemplate().getFeature(t2.getNGramm().taggedWords);
+        for (Main.VectorWithWords v : t2.getVectors()) {
+            if (v.word.word().equals(s2)) {
+                v2 = v.vector.toArray();
+            }
+        }
+
+        if (v1 == null || v2 == null) {
+            return false;
+        }
+        return threshold < cosineSimilarity(v1, v2);
     }
 }

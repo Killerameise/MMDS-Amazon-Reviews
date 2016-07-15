@@ -1,11 +1,16 @@
 package de.hpi.mmds;
 
+import de.hpi.mmds.clustering.AggregateDupDet;
+import de.hpi.mmds.clustering.DIMSUM;
+import de.hpi.mmds.clustering.ExactClustering;
+import de.hpi.mmds.clustering.NGramClustering;
 import de.hpi.mmds.database.MetadataRecord;
 import de.hpi.mmds.database.ReviewRecord;
 import de.hpi.mmds.filter.CategoryFilter;
 import de.hpi.mmds.filter.PriceFilter;
 import de.hpi.mmds.json.JsonReader;
 import de.hpi.mmds.nlp.BigramThesis;
+import de.hpi.mmds.nlp.template.TemplateBased;
 import de.hpi.mmds.nlp.Utility;
 import de.hpi.mmds.nlp.template.AdjectiveNounTemplate;
 import de.hpi.mmds.nlp.template.Template;
@@ -16,29 +21,23 @@ import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.broadcast.Broadcast;
-import org.apache.spark.graphx.Graph;
 import org.apache.spark.ml.regression.LinearRegressionModel;
 import org.apache.spark.mllib.feature.Word2Vec;
 import org.apache.spark.mllib.feature.Word2VecModel;
-import org.apache.spark.mllib.linalg.DenseVector;
 import org.apache.spark.mllib.linalg.Vector;
 import org.apache.spark.mllib.linalg.Vectors;
-import org.apache.spark.mllib.linalg.distributed.*;
 import org.apache.spark.mllib.regression.LabeledPoint;
-import org.apache.spark.rdd.RDD;
 import org.apache.spark.sql.DataFrame;
-import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SQLContext;
 import scala.Tuple2;
-//import edu.berkeley.cs.amplab.spark.indexedrdd.IndexedRDD;
-//import edu.berkeley.cs.amplab.spark.indexedrdd.IndexedRDD._;
 
 import java.io.File;
 import java.io.Serializable;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static de.hpi.mmds.transpose.*;
+//import edu.berkeley.cs.amplab.spark.indexedrdd.IndexedRDD;
+//import edu.berkeley.cs.amplab.spark.indexedrdd.IndexedRDD._;
 
 
 public class Main {
@@ -75,6 +74,18 @@ public class Main {
         }
         Broadcast<List<String>> productBroadcast = context.broadcast(products);
 
+        boolean useWord2Vec = false;
+        NGramClustering clusterAlgorithm = new ExactClustering();
+        if (args.length >= 4) {
+            String algorithm = args[3];
+            if (algorithm.equals("DIMSUM")) {
+                clusterAlgorithm = new DIMSUM();
+            } else if (algorithm.equals("TreeAggregate")) {
+                clusterAlgorithm = new AggregateDupDet();
+            }
+            useWord2Vec = true;
+        }
+
         JavaRDD<String> fileRDD = context.textFile(reviewPath, CPUS);
 
         JavaRDD<ReviewRecord> recordsRDD = fileRDD.map(JsonReader::readReviewJson);
@@ -92,12 +103,16 @@ public class Main {
                 a -> a._1.stream().map(Word::word).collect(Collectors.toList())
         );
 
-        // Learn a mapping from words to Vectors.
-        Word2Vec word2Vec = new Word2Vec()
-                .setVectorSize(50)
-                .setMinCount(0)
-                .setNumPartitions(CPUS);
-        Word2VecModel model = word2Vec.fit(textRdd);
+        Word2VecModel word2VecModelmodel = null;
+        if (useWord2Vec) {
+            Word2Vec word2Vec = new Word2Vec()
+                    .setVectorSize(50)
+                    .setMinCount(0)
+                    .setNumPartitions(CPUS);
+            word2VecModelmodel = word2Vec.fit(textRdd);
+        }
+        Broadcast<Boolean> word2vecBroadcast = context.broadcast(useWord2Vec);
+        Broadcast<Word2VecModel> modelBroadcast = context.broadcast(word2VecModelmodel);
 
 
         Template template = new AdjectiveNounTemplate(); //TODO: use more templates again
@@ -110,20 +125,22 @@ public class Main {
 
         JavaPairRDD<Match, Integer> vectorRDD = semiFinalRDD.mapToPair(a -> {
             List<VectorWithWords> vectors = a._1().stream().map(
-                    (TaggedWord taggedWord) ->
-                            new VectorWithWords(model.transform(taggedWord.word()), taggedWord))
-                    .collect(Collectors.toList());
+                    (TaggedWord taggedWord) -> {
+                        final boolean word2vec = word2vecBroadcast.getValue();
+                        Vector vector = null;
+                        if (word2vec) {
+                            final Word2VecModel model = modelBroadcast.getValue();
+                            vector = model.transform(taggedWord.word());
+                        }
+                        return new VectorWithWords(vector, taggedWord);
+                    }).collect(Collectors.toList());
             return new Tuple2<>(new Match(vectors, template), a._2);
         });
 
         JavaPairRDD<Match, Integer> repartitionedVectorRDD = vectorRDD.repartition(CPUS);
 
-        /**
-         * Insert Duplicate Detection method here:
-         */
-
-        JavaPairRDD<MergedVector, Integer> unsortedClustersRDD = DIMSUM.resolveDuplicates(repartitionedVectorRDD, threshold, context, CPUS).mapToPair(
-                (t) -> new Tuple2<>(t, t.count));
+        JavaPairRDD<MergedVector, Integer> unsortedClustersRDD = clusterAlgorithm.resolveDuplicates(
+                repartitionedVectorRDD, threshold, context, CPUS).mapToPair((t) -> new Tuple2<>(t, t.count));
 
         JavaPairRDD<MergedVector, Integer> sortedClustersRDD = unsortedClustersRDD.mapToPair(Tuple2::swap)
                 .sortByKey(false).mapToPair(Tuple2::swap);
@@ -133,21 +150,21 @@ public class Main {
         finalClusterRDD.take(25).forEach((t) -> {
             List<TaggedWord> representation = t.getNGramm().taggedWords;
             System.out.println(representation.toString() + ": " + t.count.toString() + " | " + t.ngrams.stream()
-                    .map(n -> n.taggedWords.stream().map(tw -> tw.word()).collect(Collectors.joining(", ")))
+                    .map(n -> n.taggedWords.stream().map(Word::word).collect(Collectors.joining(", ")))
                     .collect(Collectors.joining(" + ")));
             System.out.println("Feature: " + template.getFeature(representation));
         });
 
-        List<Tuple2<Tuple2<String, String>, Double>> weighted = buildLinearModels(sqlContext, tagRDD, finalClusterRDD);
+        List<Tuple2<Tuple2<String, String>, Double>> results = buildLinearModels(sqlContext, tagRDD, finalClusterRDD);
+        JavaPairRDD<Double, Tuple2<String, String>> weighted = context.parallelizePairs(results).mapToPair(Tuple2::swap);
 
-        JavaPairRDD<Tuple2<String, String>, Double> weighted2 = context.parallelizePairs(weighted);
+        List<Tuple2<Double, Tuple2<String, String>>> mostPositive = weighted.sortByKey(false).take(25);
+        List<Tuple2<Double, Tuple2<String, String>>> mostNegative = weighted.sortByKey(true).take(25);
+
         System.out.println("Most positive");
-
-        weighted2.mapToPair(Tuple2::swap).sortByKey(false).take(25).forEach(tuple -> System.out.println(tuple._2() + ": " + tuple._1()));
+        mostPositive.forEach(tuple -> System.out.println(tuple._2() + ": " + tuple._1()));
         System.out.println("Most negative");
-        weighted2.mapToPair(Tuple2::swap).sortByKey(true).take(25).forEach(tuple -> System.out.println(tuple._2() + ": " + tuple._1()));
-
-
+        mostNegative.forEach(tuple -> System.out.println(tuple._2() + ": " + tuple._1()));
     }
 
     private static List<Tuple2<Tuple2<String, String>, Double>> buildLinearModels(SQLContext sqlContext, JavaPairRDD<List<TaggedWord>, Float> tagRDD, JavaRDD<MergedVector> finalClusterRDD) {
@@ -198,55 +215,6 @@ public class Main {
         return weighted;
     }
 
-    public static double cosineSimilarity(double[] docVector1, double[] docVector2) {
-        double dotProduct = 0.0;
-        double magnitude1 = 0.0;
-        double magnitude2 = 0.0;
-        double cosineSimilarity = 0.0;
-
-        for (int i = 0; i < docVector1.length; i++) //docVector1 and docVector2 must be of same length
-        {
-            dotProduct += docVector1[i] * docVector2[i];  //a.b
-            magnitude1 += Math.pow(docVector1[i], 2);  //(a^2)
-            magnitude2 += Math.pow(docVector2[i], 2); //(b^2)
-        }
-
-        magnitude1 = Math.sqrt(magnitude1);//sqrt(a^2)
-        magnitude2 = Math.sqrt(magnitude2);//sqrt(b^2)
-
-        if (magnitude1 != 0.0 | magnitude2 != 0.0) {
-            cosineSimilarity = dotProduct / (magnitude1 * magnitude2);
-        } else {
-            return 0.0;
-        }
-        return cosineSimilarity;
-    }
-
-    public static boolean compare(TemplateBased t1, TemplateBased t2) {
-        double threshold = 0.9;
-
-        double[] v1 = null;
-        String s1 = t1.getTemplate().getFeature(t1.getNGramm().taggedWords);
-        for (VectorWithWords v : t1.getVectors()) {
-            if (v.word.word().equals(s1)) {
-                v1 = v.vector.toArray();
-            }
-        }
-
-        double[] v2 = null;
-        String s2 = t2.getTemplate().getFeature(t2.getNGramm().taggedWords);
-        for (VectorWithWords v : t2.getVectors()) {
-            if (v.word.word().equals(s2)) {
-                v2 = v.vector.toArray();
-            }
-        }
-
-        if (v1 == null || v2 == null) {
-            return false;
-        }
-        return threshold < cosineSimilarity(v1, v2);
-    }
-
     public static class VectorWithWords implements Serializable {
         public TaggedWord word;
         public Vector     vector;
@@ -262,14 +230,6 @@ public class Main {
                    ", vector=" + vector +
                    '}';
         }
-    }
-
-    interface TemplateBased {
-        Template getTemplate();
-
-        NGramm getNGramm();
-
-        List<VectorWithWords> getVectors();
     }
 
     public static class Match implements Serializable, TemplateBased {
