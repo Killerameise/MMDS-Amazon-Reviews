@@ -92,7 +92,7 @@ public class Main {
         }
 
         JavaPairRDD<List<TaggedWord>, Float> tagRDD = recordsRDD.mapToPair(
-                (ReviewRecord x) -> new Tuple2(Utility.posTag(x.getReviewText()), x.getOverall()));
+                (ReviewRecord x) -> new Tuple2<>(Utility.posTag(x.getReviewText()), x.getOverall()));
 
         tagRDD.cache();
 
@@ -100,22 +100,22 @@ public class Main {
                 a -> a._1.stream().map(Word::word).collect(Collectors.toList())
         );
 
-        Word2VecModel word2VecModelmodel = null;
+        Word2VecModel word2VecModel = null;
         if (useWord2Vec) {
             Word2Vec word2Vec = new Word2Vec()
                     .setVectorSize(50)
                     .setMinCount(0)
                     .setNumPartitions(CPUS);
-            word2VecModelmodel = word2Vec.fit(textRdd);
+            word2VecModel = word2Vec.fit(textRdd);
         }
         Broadcast<Boolean> word2vecBroadcast = context.broadcast(useWord2Vec);
-        Broadcast<Word2VecModel> modelBroadcast = context.broadcast(word2VecModelmodel);
+        Broadcast<Word2VecModel> modelBroadcast = context.broadcast(word2VecModel);
 
 
-        Template template = new AdjectiveNounTemplate(); //TODO: use more templates again
+        Template template = new AdjectiveNounTemplate();
         JavaRDD<List<Tuple2<List<TaggedWord>, Integer>>> rddValuesRDD = tagRDD.map(
                 taggedWords -> BigramThesis.findKGramsEx(3, taggedWords._1(), template)
-        ); //TODO: carry on review id and review score for use by linear model
+        );
 
         JavaPairRDD<List<TaggedWord>, Integer> semiFinalRDD = rddValuesRDD.flatMapToPair(a -> a).reduceByKey(
                 (a, b) -> a + b);
@@ -164,18 +164,17 @@ public class Main {
         mostNegative.forEach(tuple -> System.out.println(tuple._2() + ": " + tuple._1()));
     }
 
-    private static List<Tuple2<Tuple2<String, String>, Double>> buildLinearModels(SQLContext sqlContext, JavaPairRDD<List<TaggedWord>, Float> tagRDD, JavaRDD<MergedVector> finalClusterRDD) {
+    private static List<Tuple2<Tuple2<String, String>, Double>> buildLinearModels(
+            SQLContext sqlContext, JavaPairRDD<List<TaggedWord>, Float> tagRDD, JavaRDD<MergedVector> finalClusterRDD) {
         List<Tuple2<Tuple2<String, String>, Double>> weighted = new LinkedList<>();
         finalClusterRDD.take(25).forEach((MergedVector cluster) -> {
             String feature = cluster.feature;
-            List<String> descriptions = new ArrayList<String>(cluster.descriptions);
+            List<String> descriptions = new ArrayList<>(cluster.descriptions);
             JavaRDD<LabeledPoint> points = tagRDD.map((Tuple2<List<TaggedWord>, Float> rating) -> {
-                //Map<List<TaggedWord>, String> fmp = descriptionMapBroadcast.getValue();
                 double[] v = new double[descriptions.size()];
-                List<NGram> output = new LinkedList<NGram>();
+                List<NGram> output = new LinkedList<>();
                 BigramThesis.findKGramsEx(3, rating._1, cluster.template).forEach(result ->
                         output.add(new NGram(result._1(), cluster.template)));
-                //List<TaggedWord> output = rating._1().stream().filter((TaggedWord tw) -> (fbc.contains(tw.word()))).collect(Collectors.toList());
                 Boolean foundOne = false;
                 for (NGram ngram : output) {
                     String description = ngram.template.getDescription(ngram.taggedWords);
@@ -202,10 +201,9 @@ public class Main {
             System.out.println("Model 1 was fit using parameters: " + model1.coefficients());
 
             List<Tuple2<Tuple2<String, String>, Double>> list = new LinkedList<>();
-            double[] coeffs = model1.coefficients().toArray();
-            for (int i = 0; i < coeffs.length; i++) {
-                int index = i;
-                list.add(new Tuple2<>(new Tuple2<String, String>(descriptions.get(i), feature), coeffs[i]));
+            double[] coefficients = model1.coefficients().toArray();
+            for (int i = 0; i < coefficients.length; i++) {
+                list.add(new Tuple2<>(new Tuple2<>(descriptions.get(i), feature), coefficients[i]));
             }
             weighted.addAll(list);
         });
