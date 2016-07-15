@@ -1,9 +1,9 @@
 package de.hpi.mmds.clustering;
 
-import de.hpi.mmds.Main;
-import de.hpi.mmds.Main.Match;
-import de.hpi.mmds.Main.MergedVector;
-import de.hpi.mmds.Main.NGramm;
+import de.hpi.mmds.nlp.Match;
+import de.hpi.mmds.nlp.MergedVector;
+import de.hpi.mmds.nlp.NGram;
+import de.hpi.mmds.nlp.VectorWithWords;
 import de.hpi.mmds.nlp.template.TemplateBased;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -27,7 +27,7 @@ public class AggregateDupDet implements NGramClustering {
                         MergedVector l = acc.get(i);
                         if (l.feature.equals(value._1().representative) || compare(value._1(), l)) {
                             new_acc.remove(i);
-                            Set<NGramm> words = new HashSet<>(l.ngrams);
+                            Set<NGram> words = new HashSet<>(l.ngrams);
                             words.add(value._1().ngram);
                             new_acc.add(new MergedVector(l.vector, l.template, words, l.count + value._2()));
                             foundOne = true;
@@ -35,7 +35,7 @@ public class AggregateDupDet implements NGramClustering {
                         }
                     }
                     if (!foundOne) {
-                        Set<NGramm> words = new HashSet<>();
+                        Set<NGram> words = new HashSet<>();
                         words.add(value._1().ngram);
                         new_acc.add(new MergedVector(value._1().vectors, value._1().template, words, value._2()));
                     }
@@ -53,7 +53,7 @@ public class AggregateDupDet implements NGramClustering {
                         for (int j = i + 1; j < dotProduct.size(); j++) {
                             MergedVector l2 = dotProduct.get(j);
                             if (l1.feature.equals(l2.feature) || compare(l1, l2)) {
-                                Set<NGramm> words = new HashSet<>(l1.ngrams);
+                                Set<NGram> words = new HashSet<>(l1.ngrams);
                                 words.addAll(l2.ngrams);
                                 result.add(new MergedVector(l1.vector, l1.template, words, l1.count + l2.count));
                                 foundOne = true;
@@ -99,7 +99,7 @@ public class AggregateDupDet implements NGramClustering {
 
         double[] v1 = null;
         String s1 = t1.getTemplate().getFeature(t1.getNGramm().taggedWords);
-        for (Main.VectorWithWords v : t1.getVectors()) {
+        for (VectorWithWords v : t1.getVectors()) {
             if (v.word.word().equals(s1)) {
                 v1 = v.vector.toArray();
             }
@@ -107,7 +107,7 @@ public class AggregateDupDet implements NGramClustering {
 
         double[] v2 = null;
         String s2 = t2.getTemplate().getFeature(t2.getNGramm().taggedWords);
-        for (Main.VectorWithWords v : t2.getVectors()) {
+        for (VectorWithWords v : t2.getVectors()) {
             if (v.word.word().equals(s2)) {
                 v2 = v.vector.toArray();
             }

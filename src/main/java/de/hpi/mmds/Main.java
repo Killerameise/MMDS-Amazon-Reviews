@@ -9,9 +9,7 @@ import de.hpi.mmds.database.ReviewRecord;
 import de.hpi.mmds.filter.CategoryFilter;
 import de.hpi.mmds.filter.PriceFilter;
 import de.hpi.mmds.json.JsonReader;
-import de.hpi.mmds.nlp.BigramThesis;
-import de.hpi.mmds.nlp.template.TemplateBased;
-import de.hpi.mmds.nlp.Utility;
+import de.hpi.mmds.nlp.*;
 import de.hpi.mmds.nlp.template.AdjectiveNounTemplate;
 import de.hpi.mmds.nlp.template.Template;
 import edu.stanford.nlp.ling.TaggedWord;
@@ -32,18 +30,17 @@ import org.apache.spark.sql.SQLContext;
 import scala.Tuple2;
 
 import java.io.File;
-import java.io.Serializable;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.stream.Collectors;
-
-//import edu.berkeley.cs.amplab.spark.indexedrdd.IndexedRDD;
-//import edu.berkeley.cs.amplab.spark.indexedrdd.IndexedRDD._;
 
 
 public class Main {
+    private static final double THRESHOLD = 0.95;
+
     private static String reviewPath = "resources/reviews";
     private static int CPUS = 8;
-    private static double threshold = 0.95;
 
     public static void main(String args[]) {
 
@@ -140,7 +137,7 @@ public class Main {
         JavaPairRDD<Match, Integer> repartitionedVectorRDD = vectorRDD.repartition(CPUS);
 
         JavaPairRDD<MergedVector, Integer> unsortedClustersRDD = clusterAlgorithm.resolveDuplicates(
-                repartitionedVectorRDD, threshold, context, CPUS).mapToPair((t) -> new Tuple2<>(t, t.count));
+                repartitionedVectorRDD, THRESHOLD, context, CPUS).mapToPair((t) -> new Tuple2<>(t, t.count));
 
         JavaPairRDD<MergedVector, Integer> sortedClustersRDD = unsortedClustersRDD.mapToPair(Tuple2::swap)
                 .sortByKey(false).mapToPair(Tuple2::swap);
@@ -175,12 +172,12 @@ public class Main {
             JavaRDD<LabeledPoint> points = tagRDD.map((Tuple2<List<TaggedWord>, Float> rating) -> {
                 //Map<List<TaggedWord>, String> fmp = descriptionMapBroadcast.getValue();
                 double[] v = new double[descriptions.size()];
-                List<NGramm> output = new LinkedList<NGramm>();
+                List<NGram> output = new LinkedList<NGram>();
                 BigramThesis.findKGramsEx(3, rating._1, cluster.template).forEach(result ->
-                        output.add(new NGramm(result._1(), cluster.template)));
+                        output.add(new NGram(result._1(), cluster.template)));
                 //List<TaggedWord> output = rating._1().stream().filter((TaggedWord tw) -> (fbc.contains(tw.word()))).collect(Collectors.toList());
                 Boolean foundOne = false;
-                for (NGramm ngram : output) {
+                for (NGram ngram : output) {
                     String description = ngram.template.getDescription(ngram.taggedWords);
                     foundOne = true;
                     int index = descriptions.indexOf(description);
@@ -215,104 +212,4 @@ public class Main {
         return weighted;
     }
 
-    public static class VectorWithWords implements Serializable {
-        public TaggedWord word;
-        public Vector     vector;
-
-        public VectorWithWords(final Vector vector, final TaggedWord words) {
-            this.word = words;
-            this.vector = vector;
-        }
-
-        @Override
-        public String toString() {
-            return "VectorWithWords{" +
-                   ", vector=" + vector +
-                   '}';
-        }
-    }
-
-    public static class Match implements Serializable, TemplateBased {
-        public List<VectorWithWords> vectors;
-        public NGramm                ngram;
-        public Template              template;
-        public String                representative;
-
-        public Match(final List<VectorWithWords> vlist, final Template template) {
-            this.vectors = vlist;
-            this.template = template;
-            List<TaggedWord> words = new LinkedList<>();
-            this.vectors.forEach(a -> words.add(a.word));
-            this.ngram = new NGramm(words, template);
-            this.representative = template.getFeature(words);
-        }
-
-        @Override
-        public Template getTemplate() {
-            return template;
-        }
-
-        @Override
-        public NGramm getNGramm() {
-            return ngram;
-        }
-
-        @Override
-        public List<VectorWithWords> getVectors() {
-            return vectors;
-        }
-    }
-
-    public static class MergedVector implements Serializable, TemplateBased {
-        public List<VectorWithWords> vector;
-        public Template              template;
-        public String                feature;
-        public Set<String>           descriptions;
-        public Set<NGramm>           ngrams;
-        public NGramm                representative;
-        public Integer               count;
-
-        public MergedVector(final List<VectorWithWords> vector,
-                            final Template template,
-                            final Set<NGramm> ngrams,
-                            final Integer count) {
-            this.vector = vector;
-            this.template = template;
-            this.ngrams = ngrams;
-            this.count = count;
-            List<TaggedWord> words = new LinkedList<>();
-            this.vector.forEach(a -> words.add(a.word));
-            this.feature = template.getFeature(words);
-            this.descriptions = new HashSet<>();
-            for (NGramm ngram : this.ngrams) {
-                this.descriptions.add(ngram.template.getDescription(ngram.taggedWords));
-            }
-            this.representative = this.ngrams.iterator().next();
-        }
-
-        @Override
-        public Template getTemplate() {
-            return template;
-        }
-
-        @Override
-        public NGramm getNGramm() {
-            return representative;
-        }
-
-        @Override
-        public List<VectorWithWords> getVectors() {
-            return vector;
-        }
-    }
-
-    public static class NGramm implements Serializable {
-        public List<TaggedWord> taggedWords;
-        public Template         template;
-
-        public NGramm(List<TaggedWord> twords, Template template) {
-            this.taggedWords = twords;
-            this.template = template;
-        }
-    }
 }

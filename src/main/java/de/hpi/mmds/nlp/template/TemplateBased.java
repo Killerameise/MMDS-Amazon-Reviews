@@ -1,13 +1,14 @@
 package de.hpi.mmds.nlp.template;
 
-import de.hpi.mmds.Main;
+import de.hpi.mmds.nlp.NGram;
+import de.hpi.mmds.nlp.VectorWithWords;
 
 import java.util.List;
 
 public interface TemplateBased {
     Template getTemplate();
 
-    Main.NGramm getNGramm();
+    NGram getNGramm();
 
-    List<Main.VectorWithWords> getVectors();
+    List<VectorWithWords> getVectors();
 }

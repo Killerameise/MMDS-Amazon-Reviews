@@ -1,8 +1,8 @@
 package de.hpi.mmds.clustering;
 
-import de.hpi.mmds.Main.Match;
-import de.hpi.mmds.Main.MergedVector;
-import de.hpi.mmds.Main.NGramm;
+import de.hpi.mmds.nlp.Match;
+import de.hpi.mmds.nlp.MergedVector;
+import de.hpi.mmds.nlp.NGram;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -50,7 +50,7 @@ public class DIMSUM implements NGramClustering {
         JavaPairRDD<Long, Iterable<Match>> i2 = h.groupByKey();
 
         return i2.map(value -> {
-            Set<NGramm> ngrams = new HashSet<>();
+            Set<NGram> ngrams = new HashSet<>();
             value._2().iterator().forEachRemaining(it -> ngrams.add(it.getNGramm()));
             Match mv = value._2().iterator().next();
             return new MergedVector(mv.getVectors(), mv.template, ngrams, ngrams.size());
