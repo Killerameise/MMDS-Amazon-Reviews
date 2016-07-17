@@ -50,24 +50,22 @@ public class AggregateDupDet implements NGramClustering, Serializable {
                 (List<MergedVector> acc1, List<MergedVector> acc2) -> {
                     List<MergedVector> dotProduct = new LinkedList<>();
                     List<MergedVector> result = new LinkedList<>();
+                    Set<Integer> deletedItems = new HashSet<>();
                     dotProduct.addAll(acc1);
                     dotProduct.addAll(acc2);
                     for (int i = 0; i < dotProduct.size(); i++) {
-                        Boolean foundOne = false;
                         MergedVector l1 = dotProduct.get(i);
                         for (int j = i + 1; j < dotProduct.size(); j++) {
+                            if (deletedItems.contains(j)) continue;
                             MergedVector l2 = dotProduct.get(j);
-                            if (l1.feature.equals(l2.feature) || compare(l1, l2)) {
+                            if(l1.feature.equals(l2.feature) || compare(l1, l2)){
                                 Set<NGram> words = new HashSet<>(l1.ngrams);
                                 words.addAll(l2.ngrams);
-                                result.add(new MergedVector(l1.vector, l1.template, words, l1.count + l2.count));
-                                foundOne = true;
-                                break;
+                                l1 = new MergedVector(l1.vector, l1.template, words, l1.count + l2.count);
+                                deletedItems.add(j);
                             }
                         }
-                        if (!foundOne) {
-                            result.add(new MergedVector(l1.vector, l1.template, l1.ngrams, l1.count));
-                        }
+                        result.add(l1);
                     }
                     return result;
                 }
