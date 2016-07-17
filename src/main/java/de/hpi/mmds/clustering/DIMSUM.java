@@ -3,6 +3,7 @@ package de.hpi.mmds.clustering;
 import de.hpi.mmds.nlp.Match;
 import de.hpi.mmds.nlp.MergedVector;
 import de.hpi.mmds.nlp.NGram;
+import de.hpi.mmds.nlp.VectorWithWords;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -24,8 +25,18 @@ public class DIMSUM implements NGramClustering, Serializable {
                 repartitionedVectorRDD2.mapToPair(Tuple2::swap);
 
         JavaPairRDD<Vector, Long> indexedVectors = repartitionedVectorRDD2.mapToPair(
-                (Tuple2<Tuple2<Match, Integer>, Long> tuple) ->
-                        (new Tuple2<>(tuple._1()._1().getVectors().get(0).vector, tuple._2())));
+                (Tuple2<Tuple2<Match, Integer>, Long> tuple) -> {
+                    Match match = tuple._1()._1();
+                    String feature = match.getTemplate().getFeature(match.getNGramm().taggedWords);
+                    Vector vector = null;
+                    for (VectorWithWords v : match.getVectors()) {
+                        if (v.word.word().equals(feature)) {
+                            vector = v.vector;
+                        }
+                    }
+                    if (vector == null) vector = match.getVectors().get(0).vector;
+                    return new Tuple2<>(vector, tuple._2());
+                });
         JavaRDD<IndexedRow> rows = indexedVectors.map(tuple -> new IndexedRow(tuple._2(), tuple._1()));
 
         IndexedRowMatrix mat = new IndexedRowMatrix(rows.rdd());
