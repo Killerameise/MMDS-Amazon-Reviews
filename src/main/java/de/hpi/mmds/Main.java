@@ -111,9 +111,10 @@ public class Main {
         JavaPairRDD<MergedVector, Integer> sortedClustersRDD = unsortedClustersRDD.mapToPair(Tuple2::swap)
                 .sortByKey(false).mapToPair(Tuple2::swap);
 
-        JavaRDD<MergedVector> finalClusterRDD = sortedClustersRDD.map(Tuple2::_1);
+        List<MergedVector> clusters = sortedClustersRDD.map(Tuple2::_1).take(25);
 
-        finalClusterRDD.take(25).forEach((t) -> {
+        // TODO: output to file:
+        clusters.forEach((t) -> {
             List<TaggedWord> representation = t.getNGramm().taggedWords;
             System.out.println(representation.toString() + ": " + t.count.toString() + " | " + t.ngrams.stream()
                     .map(n -> n.taggedWords.stream().map(Word::word).collect(Collectors.joining(", ")))
@@ -121,8 +122,8 @@ public class Main {
             System.out.println("Feature: " + template.getFeature(representation));
         });
 
-        List<Tuple2<Tuple2<String, String>, Double>> results = buildLinearModels(sqlContext, tagRDD, finalClusterRDD);
-        JavaPairRDD<Double, Tuple2<String, String>> weighted = context.parallelizePairs(results).mapToPair(Tuple2::swap);
+        List<Tuple2<Double, Tuple2<String, String>>> results = buildLinearModels(sqlContext, tagRDD, clusters);
+        JavaPairRDD<Double, Tuple2<String, String>> weighted = context.parallelizePairs(results);
 
         List<Tuple2<Double, Tuple2<String, String>>> mostPositive = weighted.sortByKey(false).take(25);
         List<Tuple2<Double, Tuple2<String, String>>> mostNegative = weighted.sortByKey(true).take(25);
@@ -185,10 +186,10 @@ public class Main {
         return null;
     }
 
-    private static List<Tuple2<Tuple2<String, String>, Double>> buildLinearModels(
-            SQLContext sqlContext, JavaPairRDD<List<TaggedWord>, Float> tagRDD, JavaRDD<MergedVector> finalClusterRDD) {
-        List<Tuple2<Tuple2<String, String>, Double>> weighted = new LinkedList<>();
-        finalClusterRDD.take(25).forEach((MergedVector cluster) -> {
+    private static List<Tuple2<Double, Tuple2<String, String>>> buildLinearModels(
+            SQLContext sqlContext, JavaPairRDD<List<TaggedWord>, Float> tagRDD, List<MergedVector> clusters) {
+        List<Tuple2<Double, Tuple2<String, String>>> weighted = new LinkedList<>();
+        clusters.forEach((MergedVector cluster) -> {
             String feature = cluster.feature;
             List<String> descriptions = new ArrayList<>(cluster.descriptions);
             JavaRDD<LabeledPoint> points = tagRDD.map((Tuple2<List<TaggedWord>, Float> rating) -> {
@@ -221,10 +222,10 @@ public class Main {
 
             System.out.println("Model 1 was fit using parameters: " + model1.coefficients());
 
-            List<Tuple2<Tuple2<String, String>, Double>> list = new LinkedList<>();
+            List<Tuple2<Double, Tuple2<String, String>>> list = new LinkedList<>();
             double[] coefficients = model1.coefficients().toArray();
             for (int i = 0; i < coefficients.length; i++) {
-                list.add(new Tuple2<>(new Tuple2<>(descriptions.get(i), feature), coefficients[i]));
+                list.add(new Tuple2<>(coefficients[i], new Tuple2<>(descriptions.get(i), feature)));
             }
             weighted.addAll(list);
         });
