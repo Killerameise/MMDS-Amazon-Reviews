@@ -83,7 +83,7 @@ public class Main {
 
         Template template = new AdjectiveNounTemplate();
         JavaRDD<List<Tuple2<List<TaggedWord>, Integer>>> rddValuesRDD = tagRDD.map(
-                taggedWords -> BigramThesis.findKGramsEx(3, taggedWords._1(), template)
+                taggedWords -> BigramThesis.findNGrams(3, taggedWords._1(), template)
         );
 
         JavaPairRDD<List<TaggedWord>, Integer> semiFinalRDD = rddValuesRDD.flatMapToPair(a -> a).reduceByKey(
@@ -194,7 +194,7 @@ public class Main {
             JavaRDD<LabeledPoint> points = tagRDD.map((Tuple2<List<TaggedWord>, Float> rating) -> {
                 double[] v = new double[descriptions.size()];
                 List<NGram> output = new LinkedList<>();
-                BigramThesis.findKGramsEx(3, rating._1, cluster.template).forEach(result ->
+                BigramThesis.findNGrams(3, rating._1, cluster.template).forEach(result ->
                         output.add(new NGram(result._1(), cluster.template)));
                 Boolean foundOne = false;
                 for (NGram ngram : output) {
