@@ -18,7 +18,7 @@ public class BigramThesis implements Serializable {
     public static final List<String> verbTags = Arrays.asList("VB", "VBD");
 
 
-    public static List<Tuple2<List<TaggedWord>, Integer>> findKGramsEx(int k, List<TaggedWord> text, Template template) {
+    public static List<Tuple2<List<TaggedWord>, Integer>> findNGrams(int k, List<TaggedWord> text, Template template) {
         CircularFifoQueue<TaggedWord> queue = new CircularFifoQueue<>(k);
         List<Tuple2<List<TaggedWord>, Integer>> result = new LinkedList<>();
 
