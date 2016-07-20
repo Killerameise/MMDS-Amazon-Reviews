@@ -10,6 +10,7 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 
@@ -24,7 +25,7 @@ public class ExactClustering implements NGramClustering {
             Set<NGram> ngrams = new HashSet<>();
             ngrams.add(t._1().getNGramm());
             Integer count = t._2();
-            return new MergedVector(vectors, template, ngrams, count);
+            return new MergedVector(vectors, template, new LinkedList<NGram>(ngrams), count);
         });
     }
 

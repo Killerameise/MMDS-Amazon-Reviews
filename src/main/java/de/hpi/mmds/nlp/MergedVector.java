@@ -5,23 +5,20 @@ import de.hpi.mmds.nlp.template.TemplateBased;
 import edu.stanford.nlp.ling.TaggedWord;
 
 import java.io.Serializable;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public class MergedVector implements Serializable, TemplateBased {
     public List<VectorWithWords> vector;
     public Template template;
     public String feature;
-    public Set<String> descriptions;
-    public Set<NGram> ngrams;
+    public Map<String, Integer> descriptions;
+    public List<NGram> ngrams;
     public NGram representative;
     public Integer count;
 
     public MergedVector(final List<VectorWithWords> vector,
                         final Template template,
-                        final Set<NGram> ngrams,
+                        final List<NGram> ngrams,
                         final Integer count) {
         this.vector = vector;
         this.template = template;
@@ -30,9 +27,12 @@ public class MergedVector implements Serializable, TemplateBased {
         List<TaggedWord> words = new LinkedList<>();
         this.vector.forEach(v -> words.add(v.word));
         this.feature = template.getFeature(words);
-        this.descriptions = new HashSet<>();
+        this.descriptions = new HashMap<>();
         for (NGram ngram : this.ngrams) {
-            this.descriptions.add(ngram.template.getDescription(ngram.taggedWords));
+            int modifierCount = 1;
+            if (this.descriptions.containsKey(ngram.template.getDescription(ngram.taggedWords)))
+                modifierCount += this.descriptions.get(ngram.template.getDescription(ngram.taggedWords));
+            this.descriptions.put(ngram.template.getDescription(ngram.taggedWords), modifierCount);
         }
         this.representative = this.ngrams.iterator().next();
     }

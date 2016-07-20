@@ -32,7 +32,7 @@ public class AggregateDupDet implements NGramClustering, Serializable {
                         MergedVector l = acc.get(i);
                         if (l.feature.equals(value._1().representative) || compare(value._1(), l)) {
                             new_acc.remove(i);
-                            Set<NGram> words = new HashSet<>(l.ngrams);
+                            List<NGram> words = new LinkedList<NGram>(l.ngrams);
                             words.add(value._1().ngram);
                             new_acc.add(new MergedVector(l.vector, l.template, words, l.count + value._2()));
                             foundOne = true;
@@ -40,7 +40,7 @@ public class AggregateDupDet implements NGramClustering, Serializable {
                         }
                     }
                     if (!foundOne) {
-                        Set<NGram> words = new HashSet<>();
+                        List<NGram> words = new LinkedList<NGram>();
                         words.add(value._1().ngram);
                         new_acc.add(new MergedVector(value._1().vectors, value._1().template, words, value._2()));
                     }
@@ -59,7 +59,7 @@ public class AggregateDupDet implements NGramClustering, Serializable {
                             if (deletedItems.contains(j)) continue;
                             MergedVector l2 = dotProduct.get(j);
                             if(l1.feature.equals(l2.feature) || compare(l1, l2)){
-                                Set<NGram> words = new HashSet<>(l1.ngrams);
+                                List<NGram> words = new LinkedList<NGram>(l1.ngrams);
                                 words.addAll(l2.ngrams);
                                 l1 = new MergedVector(l1.vector, l1.template, words, l1.count + l2.count);
                                 deletedItems.add(j);

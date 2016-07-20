@@ -13,6 +13,8 @@ import scala.Tuple2;
 
 import java.io.Serializable;
 import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Set;
 
 public class DIMSUM implements NGramClustering, Serializable {
@@ -62,7 +64,7 @@ public class DIMSUM implements NGramClustering, Serializable {
         JavaPairRDD<Long, Iterable<Match>> i2 = h.groupByKey();
 
         return i2.map(value -> {
-            Set<NGram> ngrams = new HashSet<>();
+            List<NGram> ngrams = new LinkedList<>();
             value._2().iterator().forEachRemaining(it -> ngrams.add(it.getNGramm()));
             Match mv = value._2().iterator().next();
             return new MergedVector(mv.getVectors(), mv.template, ngrams, ngrams.size());

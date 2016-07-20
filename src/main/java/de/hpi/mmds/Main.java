@@ -30,10 +30,7 @@ import org.apache.spark.sql.SQLContext;
 import scala.Tuple2;
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 
@@ -125,6 +122,7 @@ public class Main {
         List<Tuple2<Double, Tuple2<String, String>>> results = buildLinearModels(sqlContext, tagRDD, clusters);
         JavaPairRDD<Double, Tuple2<String, String>> weighted = context.parallelizePairs(results);
 
+
         List<Tuple2<Double, Tuple2<String, String>>> mostPositive = weighted.sortByKey(false).take(25);
         List<Tuple2<Double, Tuple2<String, String>>> mostNegative = weighted.sortByKey(true).take(25);
 
@@ -156,8 +154,8 @@ public class Main {
         if (args.length >= 3) {
             String metadataFile = args[2];
             JavaRDD<MetadataRecord> inputRDD = context.textFile(metadataFile, CPUS).map(JsonReader::readMetadataJson);
-            PriceFilter filter = new PriceFilter(new CategoryFilter(inputRDD, "Guitar & Bass Accessories").chain(),
-                                                 5.0, 500.0);
+            PriceFilter filter = new PriceFilter(new CategoryFilter(inputRDD, "Laptops").chain(),
+                                                 50.0, 1000.0);
             return filter.toList();
         }
         return null;
@@ -191,7 +189,7 @@ public class Main {
         List<Tuple2<Double, Tuple2<String, String>>> weighted = new LinkedList<>();
         clusters.forEach((MergedVector cluster) -> {
             String feature = cluster.feature;
-            List<String> descriptions = new ArrayList<>(cluster.descriptions);
+            List<String> descriptions = cluster.descriptions.entrySet().stream().filter((Map.Entry<String, Integer> entry) -> entry.getValue()>1).map(entry -> entry.getKey()).collect(Collectors.toList());
             JavaRDD<LabeledPoint> points = tagRDD.map((Tuple2<List<TaggedWord>, Float> rating) -> {
                 double[] v = new double[descriptions.size()];
                 List<NGram> output = new LinkedList<>();
@@ -224,9 +222,14 @@ public class Main {
 
             List<Tuple2<Double, Tuple2<String, String>>> list = new LinkedList<>();
             double[] coefficients = model1.coefficients().toArray();
+            System.out.println(feature);
             for (int i = 0; i < coefficients.length; i++) {
+                System.out.print(descriptions.get(i));
+                System.out.print("\t");
+                System.out.println(coefficients[i]);
                 list.add(new Tuple2<>(coefficients[i], new Tuple2<>(descriptions.get(i), feature)));
             }
+            System.out.println();
             weighted.addAll(list);
         });
         return weighted;

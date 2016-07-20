@@ -91,34 +91,6 @@ public class LinearRegression {
 
             System.out.println("Model 1 was fit using parameters: " + model1.coefficients());
 
-
-            /*Map<String, Double> map = new TreeMap<>();
-            double[] coeffs = model1.coefficients().toArray();
-            for (int i = 0; i < coeffs.length; i++) {
-                map.put(overallFeatures[i], coeffs[i]);
-            }
-
-            Iterator<Map.Entry<String, Double>> i = Utility.valueIterator(map);
-            System.out.println("Positive Words");
-            int j = 0;
-            while (j < 50) {
-                Map.Entry<String, Double> entry = i.next();
-                if (ta.wordCounter.getCount(entry.getKey()) > 15) {
-                    System.out.println(entry);
-                    j++;
-                }
-            }
-            System.out.println("");
-            System.out.println("Negative Words");
-            i = Utility.valueIteratorReverse(map);
-            j = 0;
-            while (j < 50) {
-                Map.Entry<String, Double> entry = i.next();
-                if (ta.wordCounter.getCount(entry.getKey()) > 15) {
-                    System.out.println(entry);
-                    j++;
-                }
-            }*/
         }
     }
 }

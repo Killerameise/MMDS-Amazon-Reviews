@@ -34,12 +34,14 @@ public class DIMSUM{
 
 
         System.out.println("Transposing Matrix");
-        RowMatrix mat2 = computeRowmatrixViaCoordMat(indexedVectors);
-        //RowMatrix mat2 = computeRowmatrixViaTranspose(indexedVectors);
+
+        /** Switch which method is used  **/
+        //RowMatrix mat2 = computeRowmatrixViaCoordMat(indexedVectors);
+        RowMatrix mat2 = computeRowmatrixViaTranspose(indexedVectors);
 
         System.out.println("computing similarities");
 
-        CoordinateMatrix coords = mat2.columnSimilarities(0.3);
+        CoordinateMatrix coords = mat2.columnSimilarities(0.3); // This calls columnSimilaritiesDIMSUM
         JavaRDD<MatrixEntry> entries = coords.entries().toJavaRDD();
         System.out.println("finished");
 
@@ -54,7 +56,7 @@ public class DIMSUM{
             Set<NGram> ngrams = new HashSet<NGram>();
             value._2().iterator().forEachRemaining(it -> ngrams.add(it.getNGramm()));
             Match mv = value._2().iterator().next();
-            return new MergedVector(mv.getVectors(), mv.template, ngrams, ngrams.size());
+            return new MergedVector(mv.getVectors(), mv.template, new LinkedList<NGram>(ngrams), ngrams.size());
         });
 
         return mergedVectorRDD;
