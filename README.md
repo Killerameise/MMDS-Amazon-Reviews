@@ -27,6 +27,17 @@ A *Modifier* is a word (-group) that describes a feature, such as `better`, `lar
 
 
 
+## Performance
+
+### Scale-out
+
+#### Runtime
+![Runtime Chart](/doc/runtime.png?raw=true "Runtime / Number of Cores")
+#### Relative Speedup
+![Relative Speedup Chart](/doc/runtime.png?raw=true "Relative Speedup / Number of Cores")
+#### Percentage Improvement
+![Percentage Improvement Chart](/doc/runtime.png?raw=true "Percentage Improvement / Number of Cores")
+
 ## Datasets
 
 We use Amazon.com product reviews as provided in the [Amazon product reviews](http://jmcauley.ucsd.edu/data/amazon/). The program will only accept reviews and metadata in JSON format from the local file system or the Hadoop filesystem (HDFS).
