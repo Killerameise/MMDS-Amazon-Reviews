@@ -17,6 +17,20 @@ A *Modifier* is a word (-group) that describes a feature, such as `better`, `lar
 
 ### Feature Extraction
 
+#### Filtering
+
+We use filters to narrow down reviews to products of specific categories, brands, and price ranges. There are four filters currently implemented:
+
+| Filter Class   | Input                                          | Output                                     |
+|----------------|------------------------------------------------|--------------------------------------------|
+| SampleFilter   | List of Products, Sample Fraction (0..1), Seed | Sampled list of products                   |
+| BrandFilter    | List of Products, Brand Name                   | Only Products of the given brand           |
+| CategoryFilter | List of Products, Category Name                | Only products of the given (sub-) category |
+| PriceFilter    | List of Products, Minimum Price, Maximum Price | Only products of the given price range     |
+
+In the consecutive steps, only reviews with matching product ids will be evaluated.
+
+#### Building NGrams from Templates
 
 
 ### Feature Clustering
@@ -31,7 +45,7 @@ A *Modifier* is a word (-group) that describes a feature, such as `better`, `lar
 
 ### Scale-out
 
-The following experiments were done using a cluster with the following specifications:
+The following experiments were done using a cluster with these specifications:
 
 * Master: Dell PowerEdge R310 (4x2.66 GHz, 8 GB RAM)
 * 10 Slave Nodes: Dell OptiPlex 780 (2x2.6 GHz, 8 GB RAM)
