@@ -34,9 +34,9 @@ A *Modifier* is a word (-group) that describes a feature, such as `better`, `lar
 #### Runtime
 ![Runtime Chart](/doc/runtime.png?raw=true "Runtime / Number of Cores")
 #### Relative Speedup
-![Relative Speedup Chart](/doc/runtime.png?raw=true "Relative Speedup / Number of Cores")
+![Relative Speedup Chart](/doc/relative_speedup.png?raw=true "Relative Speedup / Number of Cores")
 #### Percentage Improvement
-![Percentage Improvement Chart](/doc/runtime.png?raw=true "Percentage Improvement / Number of Cores")
+![Percentage Improvement Chart](/doc/percentage_improvement.png?raw=true "Percentage Improvement / Number of Cores")
 
 ## Datasets
 
