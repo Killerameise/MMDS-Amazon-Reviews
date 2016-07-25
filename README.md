@@ -31,6 +31,12 @@ A *Modifier* is a word (-group) that describes a feature, such as `better`, `lar
 
 ### Scale-out
 
+The following experiments were done using a cluster with the following specifications:
+
+* Master: Dell PowerEdge R310 (4x2.66 GHz, 8 GB RAM)
+* 10 Slave Nodes: Dell OptiPlex 780 (2x2.6 GHz, 8 GB RAM)
+* Shared HDFS
+
 #### Runtime
 ![Runtime Chart](/doc/runtime.png?raw=true "Runtime / Number of Cores")
 #### Relative Speedup
