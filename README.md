@@ -4,7 +4,7 @@ Being able to compare products online revolutionized the experience of shoppers 
 
 In this project we find product feature summaries based only on natural text reviews. We use review data from Amazon.com from the excellent [Amazon product reviews](http://jmcauley.ucsd.edu/data/amazon/) dataset provided by Julian McAuley. The work was done for the seminar [Mining Massive Datasets](https://hpi.de/naumann/teaching/current-courses/ss-16/mmds.html) at Hasso Plattner Institute in Potsdam, Germany.
 
-The pipeline—as described below—is implemented as [Apache Spark](http://spark.apache.org/) jobs in Java and Scala. It can be run locally and on Spark clusters.
+The pipeline—as described below—is implemented as [Apache Spark](http://spark.apache.org/) jobs in Java and Scala. It makes use of Spark's MLlib and GraphX toolkits as well as Twitters DIMSUM algorithm. It can be run locally and on Spark clusters.
 
 ## Algorithm
 
@@ -35,11 +35,16 @@ In the consecutive steps, only reviews with matching product ids will be evaluat
 
 ### Feature Clustering
 
+#### DIMSUM
 
+[DIMSUM](https://blog.twitter.com/2014/all-pairs-similarity-via-dimsum) (Dimensionality independent matrix similarity using map-reduce) is an algorithm proposed by Twitter in order to cut the number of comparisons between matrix columns with the use of sampling. We use the SPARK-implementation of this algorithm as we hoped that it would be faster as our Aggregation method. 
+We compute the similarity between vectors of our *Features* given by the Word2Vec model previously computed. We build a coordinate-matrix out of these vectors, transpose it by swapping the cells indices and are then able to transform it into a rowmatrix. After computing the similarities of the columns, we build a graph (each Node is a Feature, each Edge a similarity over a given threshold) in order to find all connected components. Each connected component then contains words with similar vectors, which we interprete as words describing the same feature.
+In contrast to the original use-case of DIMSUM, our Matrix is dense, has many columns and few rows. As such the advantages of DIMSUM do not come into play, however, the quality of the algorithm is comparable to the aggregation.
 
 ### Modifier Weighting
 
-
+After deduplicating the features, we built a linear model for each feature over the reviews where the rating of the review is the dependent variable and the *Modifiers* are the independent variables. For this task we use Spark's MLlib. For each *Modifier* we get a coefficient which indicates how much this *Modifier* influences the rating of the review.
+Finally we sort the *Modifiers* over all Models in order to see which combinations of *Feature* and *Modifier* are the most positive or most negative.
 
 ## Performance
 
