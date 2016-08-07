@@ -32,8 +32,17 @@ In the consecutive steps, only reviews with matching product ids will be evaluat
 
 #### Building NGrams from Templates
 
+We POS-tag the remaining reviews using the [Stanford Core NLP](http://stanfordnlp.github.io/CoreNLP/) library. Over each review, we slide a window of a fixed length to find ngrams which represent the features of the product and their modifiers.
+For this, we implemented *templates* - Finite State Machines that only accept an ngram if it matches the template. Having the knowledge about the structure of the template allows us to make assumptions on the position of the feature(s) and modifier(s) within the ngram. One of the templates we use is "\[comparing adjective/adverb\] + \[noun\]" with the former being the modifier and the latter being the feature.
 
 ### Feature Clustering
+
+#### Baseline (Exact Match)
+
+This method clusters ngrams by their feature. If two ngrams contain the same feature (i.e. the same string), they are grouped together, so that we can have multiple modifiers for a feature.
+
+#### Similarity-based Aggregation
+
 
 #### DIMSUM
 
@@ -43,7 +52,7 @@ In contrast to the original use-case of DIMSUM, our Matrix is dense, has many co
 
 ### Modifier Weighting
 
-After deduplicating the features, we built a linear model for each feature over the reviews where the rating of the review is the dependent variable and the *Modifiers* are the independent variables. For this task we use Spark's MLlib. For each *Modifier* we get a coefficient which indicates how much this *Modifier* influences the rating of the review.
+After deduplicating the features, we build a linear model for each feature over the reviews where the rating of the review is the dependent variable and the *Modifiers* are the independent variables. For this task we use Spark's MLlib. For each *Modifier* we get a coefficient which indicates how much this *Modifier* influences the rating of the review.
 Finally we sort the *Modifiers* over all Models in order to see which combinations of *Feature* and *Modifier* are the most positive or most negative.
 
 ## Performance
